@@ -92,10 +92,12 @@ const RULES = {
   // already fixed for fills|VECTOR|* (icon glyphs) — confirmed here too on
   // a chart axis label ("$400K") wrongly bound to Border/border-secondary.
   // Content/content-quaternary per direct confirmation, same target as the
-  // VECTOR fix.
+  // VECTOR fix. Gray/05 specifically was later corrected to
+  // content-tertiary per direct request — Gray/06 and Gray/07 stay
+  // quaternary.
   "fills|TEXT|Gray/07": "Content/content-quaternary",
   "fills|TEXT|Gray/06": "Content/content-quaternary",
-  "fills|TEXT|Gray/05": "Content/content-quaternary",
+  "fills|TEXT|Gray/05": "Content/content-tertiary",
   "fills|TEXT|Gray/01-Surface": "Content/content-on-solid",
   "fills|TEXT|Absolute/White": "Content/content-absolute-white",
   "fills|TEXT|Absolute/Black": "Content/content-absolute-black",
@@ -167,7 +169,7 @@ const RULES = {
   "fills|VECTOR|Gray/09": "Content/content-tertiary",
   "fills|VECTOR|Gray/08": "Content/content-quaternary",
   "fills|VECTOR|Gray/07": "Content/content-quaternary",
-  "fills|VECTOR|Gray/05": "Content/content-quaternary",
+  "fills|VECTOR|Gray/05": "Content/content-tertiary",   // corrected per direct request — Gray/06 and Gray/07 stay quaternary
   "fills|VECTOR|Gray/01-Surface": "Surface/surface-raised",
   "fills|VECTOR|Absolute/White": "Content/content-absolute-white",
   "fills|VECTOR|Absolute/Black": "Content/content-absolute-black",
@@ -401,6 +403,14 @@ const NAME_ALIAS = {
   "Light/Label/Background/R": "Label/label-negative-bg",
   "Label/Foreground/R": "Label/label-negative-content",
   "Light/Label/Foreground/R": "Label/label-negative-content",
+
+  // "Steel" isn't a defined KoinX colour family at all (no hex table entry
+  // under any spelling), so it can never resolve through the normal
+  // primitive pipeline — forced straight to the semantic token per direct
+  // request. Both the bracketed-day-mode form seen live and the bare form
+  // are covered defensively, same pattern as the Label aliases above.
+  "[Day]/Steel/01-Surface": "Surface/surface-raised",
+  "Steel/01-Surface": "Surface/surface-raised",
 };
 
 /**
