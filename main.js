@@ -7,7 +7,11 @@ const PRIM_COLLECTION = "Colors-Primitives";
 const SEM_COLLECTION  = "Colors-Semantics";
 const OVERRIDE_KEY    = "xui-apply-overrides-v1";
 
-figma.showUI(__html__, { width: 380, height: 580 });
+// Starts compact (the empty "Select a frame" state is short) and the UI
+// resizes itself to fit its actual content via a "resize" message below —
+// otherwise a fixed 580px window left a huge blank area under the button
+// before any results existed to fill it.
+figma.showUI(__html__, { width: 380, height: 230 });
 
 function hex(c) {
   const h = x => Math.round(x * 255).toString(16).padStart(2, "0");
@@ -1050,6 +1054,13 @@ figma.ui.onmessage = async function (msg) {
     if (msg.type === "clearOverrides") {
       await figma.clientStorage.deleteAsync(OVERRIDE_KEY);
       figma.notify("Saved mappings cleared");
+      return;
+    }
+
+    if (msg.type === "resize") {
+      const w = Math.max(320, Math.min(480, msg.width || 380));
+      const h = Math.max(160, Math.min(640, msg.height || 230));
+      figma.ui.resize(w, h);
       return;
     }
   } catch (e) {

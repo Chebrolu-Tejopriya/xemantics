@@ -97,6 +97,23 @@ $("go").onclick = function(){
 $("clr").onclick = function(){ send({type:"clearOverrides"}); };
 send({type:"check"});
 
+/**
+ * Window "hugs" its actual content instead of sitting at a fixed height
+ * with a big blank area below a short empty state — resize on load and
+ * again after every render that can change content height (results
+ * appearing, an error showing). Clamped in code.js too, but clamp here
+ * as well so we never ask for something absurd.
+ */
+function fitWindow(){
+  var h = Math.max(160, Math.min(640, document.body.scrollHeight));
+  send({type:"resize", width:380, height:h});
+}
+window.addEventListener('load', fitWindow);
+setTimeout(fitWindow, 0);
+// "toggle" doesn't bubble, but a capture-phase listener on document still
+// sees it for any <details> (the Diagnostics section) opened/closed later.
+document.addEventListener('toggle', fitWindow, true);
+
 function esc(s){ return String(s).replace(/[<>&"]/g, function(c){
   return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
 
@@ -328,11 +345,13 @@ onmessage = function(e){
     $("go").textContent = "Apply to selection";
     $("hint").textContent = m.count === 0 ? "Select a frame"
       : m.count + " frame" + (m.count>1?"s":"") + " selected";
+    fitWindow();
     return;
   }
   if(m.type === "error"){
     $("err").textContent = m.message; $("err").classList.add("show");
     $("go").disabled = false; $("go").textContent = "Apply to selection";
+    fitWindow();
     return;
   }
   $("err").classList.remove("show");
@@ -356,6 +375,7 @@ onmessage = function(e){
     wire(m.unmapped || [], 'u');
     wire(m.unknown || [], 'x');
     wireMixedFills(m.mixedFills || []);
+    fitWindow();
     return;
   }
 };
