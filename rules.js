@@ -85,6 +85,17 @@ const RULES = {
   "fills|TEXT|Gray/12": "Content/content-primary",
   "fills|TEXT|Gray/10": "Content/content-secondary",
   "fills|TEXT|Gray/09": "Content/content-tertiary",
+  // Gray/05, Gray/06, Gray/07 have no Content-group token of their own —
+  // without an explicit rule the generic group fallback (Surface, Content,
+  // Border, Label, in that order) finds nothing in Content and falls
+  // through to Border, which DOES alias these steps. Exactly the same bug
+  // already fixed for fills|VECTOR|* (icon glyphs) — confirmed here too on
+  // a chart axis label ("$400K") wrongly bound to Border/border-secondary.
+  // Content/content-quaternary per direct confirmation, same target as the
+  // VECTOR fix.
+  "fills|TEXT|Gray/07": "Content/content-quaternary",
+  "fills|TEXT|Gray/06": "Content/content-quaternary",
+  "fills|TEXT|Gray/05": "Content/content-quaternary",
   "fills|TEXT|Gray/01-Surface": "Content/content-on-solid",
   "fills|TEXT|Absolute/White": "Content/content-absolute-white",
   "fills|TEXT|Absolute/Black": "Content/content-absolute-black",

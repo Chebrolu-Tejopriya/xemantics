@@ -558,19 +558,23 @@ async function primitiveForPaint(solid, node, prop, resolved, HEX_INDEX) {
 }
 
 /**
- * For a TEXT node with mixed (per-character) fills: if every distinct
- * segment resolves to the SAME semantic token, apply that token uniformly
- * across the whole layer and return its name. If segments disagree, or any
- * segment can't be resolved, returns null — the node is left for manual
- * review in the "Mixed-fill layers" report instead. Only auto-fixes the
- * unambiguous case; never guesses which of several genuinely different
- * colours is "correct".
+ * For a TEXT node with mixed (per-character) fills: resolve EACH distinct
+ * segment independently to its own semantic token, then apply each token
+ * to its own character range. If every segment happens to resolve to the
+ * same token, that's just the simple case (one uniform application). If
+ * segments genuinely differ — e.g. a "Label:" prefix in one colour and a
+ * "$35,490" value in another — each gets its own correct token instead of
+ * requiring the whole layer to be left for manual review.
  *
- * Confirmed live: a "Total" text layer had two segments bound to two
- * different variables ("Gray/09" and "Light/Gray/09") that both resolve to
- * the exact same colour and the exact same semantic token
- * (Content/content-tertiary) — a harmless authoring inconsistency, not a
- * deliberate two-colour design, safe to flatten to one token.
+ * Still bails out entirely (returns null, leaves the layer in "Mixed-fill
+ * layers" for manual review) if ANY segment can't be resolved at all —
+ * never guesses at an unrecognised colour, never partially applies.
+ *
+ * Confirmed live twice: a "Total" text layer had two segments bound to two
+ * different variables ("Gray/09" and "Light/Gray/09") resolving to the
+ * identical token (Content/content-tertiary) — a harmless authoring
+ * inconsistency, safe to flatten. An "Opening Balance: $35,490" layer has
+ * a genuinely two-tone label/value pair that need two different tokens.
  */
 async function resolveMixedTextFill(node, prop, resolved, HEX_INDEX, GROUP_INDEX, overrides, semVars, getSem) {
   if (prop !== "fills" || node.type !== "TEXT" || typeof node.getStyledTextSegments !== "function") return null;
@@ -582,7 +586,7 @@ async function resolveMixedTextFill(node, prop, resolved, HEX_INDEX, GROUP_INDEX
   }
   if (!segments || segments.length < 2) return null;
 
-  let agreed = null;
+  const resolvedSegments = [];
   for (const seg of segments) {
     const paints = seg.fills;
     if (!Array.isArray(paints) || !paints.length) return null;
@@ -599,29 +603,28 @@ async function resolveMixedTextFill(node, prop, resolved, HEX_INDEX, GROUP_INDEX
       semantic = resolveSemanticForPrimitive(prop, node.type, primitive, overrides, GROUP_INDEX);
     }
     if (!semantic || !semVars[semantic]) return null;
-    if (agreed === null) agreed = semantic;
-    else if (agreed !== semantic) return null;
+    resolvedSegments.push({ start: seg.start, end: seg.end, fontName: seg.fontName, basePaint: solid, semantic: semantic });
   }
-  if (!agreed) return null;
-
-  const v = await getSem(agreed);
-  if (!v) return null;
+  if (!resolvedSegments.length) return null;
 
   try {
     const fontsLoaded = {};
-    for (const seg of segments) {
-      const key = JSON.stringify(seg.fontName);
-      if (!fontsLoaded[key]) { await figma.loadFontAsync(seg.fontName); fontsLoaded[key] = true; }
+    for (const rs of resolvedSegments) {
+      const key = JSON.stringify(rs.fontName);
+      if (!fontsLoaded[key]) { await figma.loadFontAsync(rs.fontName); fontsLoaded[key] = true; }
     }
-    const basePaint = firstSolid(segments[0].fills);
-    const newPaint = figma.variables.setBoundVariableForPaint(
-      Object.assign({}, basePaint), "color", v
-    );
-    node.setRangeFills(0, node.characters.length, [newPaint]);
+    const distinctTokens = {};
+    for (const rs of resolvedSegments) {
+      const v = await getSem(rs.semantic);
+      if (!v) return null;
+      const newPaint = figma.variables.setBoundVariableForPaint(Object.assign({}, rs.basePaint), "color", v);
+      node.setRangeFills(rs.start, rs.end, [newPaint]);
+      distinctTokens[rs.semantic] = 1;
+    }
+    return { tokens: Object.keys(distinctTokens), segments: resolvedSegments.length };
   } catch (e) {
     return null;
   }
-  return agreed;
 }
 
 /**
@@ -674,23 +677,29 @@ async function applyTo(nodes, overrides) {
   }
 
   let applied = 0, structural = 0, removed = 0, alreadySemantic = 0, preserved = 0, mixedResolved = 0;
+  const unmapped = {};
+  const unknown = {};
+  const changes = [];
 
-  // Mixed-fill text layers: try to resolve automatically first (only when
-  // every distinct segment agrees on the same token — see
-  // resolveMixedTextFill()), and only report the ones that genuinely need
-  // a human decision.
+  // Mixed-fill text layers: try to resolve each segment independently
+  // first — see resolveMixedTextFill() — and only report the ones that
+  // genuinely need a human decision (some segment couldn't be resolved).
   const mixedList = [];
   for (const m of scanned.mixed) {
-    const agreed = await resolveMixedTextFill(m.node, m.prop, resolved, HEX_INDEX, GROUP_INDEX, overrides, semVars, getSem);
-    if (agreed) {
+    const result = await resolveMixedTextFill(m.node, m.prop, resolved, HEX_INDEX, GROUP_INDEX, overrides, semVars, getSem);
+    if (result) {
       mixedResolved++;
+      if (changes.length < 50) {
+        changes.push({
+          layer: (m.node.name || "").slice(0, 24),
+          from: "(mixed fill, " + result.segments + " segment" + (result.segments > 1 ? "s" : "") + ")",
+          to: result.tokens.join(" + "),
+        });
+      }
       continue;
     }
     mixedList.push({ layer: (m.node.name || "").slice(0, 40), prop: m.prop, type: m.node.type, id: m.node.id });
   }
-  const unmapped = {};
-  const unknown = {};
-  const changes = [];
   const alreadySemanticSample = [];
   const unresolvedVarSample = [];
 

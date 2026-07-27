@@ -270,16 +270,18 @@ function wire(list, kind){
 }
 
 /**
- * Layers with mixed fills (more than one colour across the same layer,
- * e.g. a few differently-coloured characters within one text node) —
- * these were previously invisible to every report (see scan() in main.js).
- * No single colour to offer a token picker for, so this just lists them
- * with a "Select" button so they can be found and fixed by hand in Figma.
+ * Layers with mixed fills where at least one character-range segment
+ * couldn't be resolved to a token at all — main.js's resolveMixedTextFill()
+ * already handles the case where every segment DOES resolve (each gets its
+ * own correct token, even when segments differ), so what's left here is
+ * genuinely unresolvable, not just "more than one colour". No single
+ * colour to offer a token picker for, so this just lists them with a
+ * "Select" button to find and fix by hand in Figma.
  */
 function renderMixedFills(list){
   if(!list.length) return '';
   var h = '<div class="sec"><h2>Mixed-fill layers</h2>' +
-          '<p>More than one colour on the same layer (e.g. a few differently-coloured characters in one text node) — no single token applies, click Select to find and fix it in Figma.</p>';
+          '<p>Multiple colours on this layer, and at least one of them isn\'t a recognised KoinX colour — each colour segment normally resolves independently, but this one needs a human look. Click Select to find and fix it in Figma.</p>';
   list.forEach(function(u, i){
     h += '<div class="card">' +
            '<div class="ch">' +
