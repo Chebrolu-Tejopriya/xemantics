@@ -413,6 +413,7 @@ const REMOVE_IN_TABLE_ROW = {
  */
 const HEX_ALIAS = {
   "#EFF2F5": "Gray/02-Background",   // -> surface-primary
+  "#DEDFE2": "Gray/04",              // -> border-tertiary (strokes) / surface-tertiary (fills)
 };
 
 /**
