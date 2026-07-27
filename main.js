@@ -377,6 +377,27 @@ async function scan(nodes) {
   return { raw: raw, resolved: resolved };
 }
 
+/**
+ * Rebinds node[prop][index]'s colour to `variable`, explicitly carrying the
+ * paint's opacity over rather than assuming setBoundVariableForPaint
+ * preserves it untouched.
+ *
+ * Confirmed live: a nav item's selected-state highlight was a pale tint —
+ * Surface/surface-brand-primary's base colour at 10% paint opacity, giving
+ * a soft lavender wash — and after conversion it rendered as a bold,
+ * full-strength solid blue block instead, with the opacity row no longer
+ * shown in Figma's Fill panel at all. Setting it back explicitly closes
+ * off that failure mode regardless of which layer it happens on.
+ */
+function rebindPaintColor(node, prop, index, variable) {
+  const paints = node[prop].map(function (p) { return Object.assign({}, p); });
+  const originalOpacity = paints[index].opacity;
+  paints[index] = figma.variables.setBoundVariableForPaint(paints[index], "color", variable);
+  if (typeof originalOpacity === "number") paints[index].opacity = originalOpacity;
+  node[prop] = paints;
+  return paints;
+}
+
 async function applyTo(nodes, overrides) {
   const semVars = await collectSemanticVars();
   if (!Object.keys(semVars).length) {
@@ -455,9 +476,7 @@ async function applyTo(nodes, overrides) {
     if (forced && semVars[forced]) {
       const v = await getSem(forced);
       if (v) {
-        const paints = t.node[t.prop].map(function (p) { return Object.assign({}, p); });
-        paints[0] = figma.variables.setBoundVariableForPaint(paints[0], "color", v);
-        t.node[t.prop] = paints;
+        rebindPaintColor(t.node, t.prop, 0, v);
         structural++;
         if (changes.length < 50) {
           changes.push({ layer: (t.node.name || "").slice(0, 24), from: "(structural rule)", to: forced });
@@ -499,9 +518,7 @@ async function applyTo(nodes, overrides) {
       if (saved && semVars[saved]) {
         const v = await getSem(saved);
         if (v) {
-          const paints = t.node[t.prop].map(function (p) { return Object.assign({}, p); });
-          paints[0] = figma.variables.setBoundVariableForPaint(paints[0], "color", v);
-          t.node[t.prop] = paints;
+          rebindPaintColor(t.node, t.prop, 0, v);
           applied++;
           continue;
         }
@@ -547,9 +564,7 @@ async function applyTo(nodes, overrides) {
 
     const v = await getSem(semantic);
     if (!v) continue;
-    const paints = t.node[t.prop].map(function (p) { return Object.assign({}, p); });
-    paints[0] = figma.variables.setBoundVariableForPaint(paints[0], "color", v);
-    t.node[t.prop] = paints;
+    rebindPaintColor(t.node, t.prop, 0, v);
     applied++;
     if (changes.length < 50) {
       changes.push({ layer: (t.node.name || "").slice(0, 24), from: primitive, to: semantic });
@@ -610,9 +625,7 @@ async function bindSignature(sig, semanticName, ids) {
     if (!node || !(prop in node)) continue;
     const paints = node[prop];
     if (!Array.isArray(paints) || !paints.length) continue;
-    const np = paints.map(function (p) { return Object.assign({}, p); });
-    np[0] = figma.variables.setBoundVariableForPaint(np[0], "color", v);
-    node[prop] = np;
+    rebindPaintColor(node, prop, 0, v);
     n++;
   }
   const saved = (await figma.clientStorage.getAsync(OVERRIDE_KEY)) || {};
