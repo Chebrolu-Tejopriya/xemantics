@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root{--ink:#0F172A;--ink2:#64748B;--line:#E2E8F0;--accent:#0052FE;--ok:#0B845D;
+        --warn-bg:#FEF3E2;--warn:#B45309;--mono:'SFMono-Regular',Consolas,Menlo,monospace;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+       font-size:12px;line-height:1.5;color:var(--ink);background:#fff;}
+  .wrap{padding:14px;}
+  h1{font-size:13px;font-weight:600;margin:0 0 3px;}
+  .sub{color:var(--ink2);font-size:11px;margin:0 0 14px;}
+  button{font:inherit;font-size:13px;font-weight:500;padding:10px 14px;border-radius:7px;
+         border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;width:100%;}
+  button:hover{background:#0148DF;}
+  button:disabled{background:#CBD5E1;border-color:#CBD5E1;cursor:not-allowed;}
+  button.sm{font-size:11px;padding:5px 9px;width:auto;background:#fff;color:var(--ink);
+            border-color:var(--line);font-weight:500;}
+  button.sm:hover{border-color:#94A3B8;background:#F8FAFC;}
+  .hint{text-align:center;color:var(--ink2);font-size:11px;margin-top:7px;}
+  .out{margin-top:14px;display:none;}
+  .out.show{display:block;}
+  .big{display:flex;align-items:baseline;gap:6px;margin-bottom:6px;}
+  .big b{font-size:22px;font-weight:600;color:var(--ok);}
+  .big span{font-size:11px;color:var(--ink2);}
+  .row{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:var(--ink2);}
+  .row b{color:var(--ink);font-weight:600;}
+  .sec{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;}
+  .sec h2{font-size:12px;font-weight:600;margin:0 0 3px;}
+  .sec p{font-size:11px;color:var(--ink2);margin:0 0 10px;}
+  .card{border:1px solid var(--line);border-radius:8px;padding:9px;margin-bottom:8px;}
+  .card.done{background:#F0FDF4;border-color:#BBF7D0;}
+  .ch{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
+  .sw{width:20px;height:20px;border-radius:4px;border:1px solid rgba(0,0,0,.12);flex:0 0 auto;}
+  .meta{flex:1;min-width:0;}
+  .meta .t{font-family:var(--mono);font-size:10.5px;font-weight:600;
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .meta .s{font-size:10px;color:var(--ink2);}
+  .ctl{display:flex;gap:6px;align-items:center;}
+  select{flex:1;font:inherit;font-size:11px;padding:5px 7px;border:1px solid var(--line);
+         border-radius:6px;background:#fff;color:var(--ink);min-width:0;}
+  .err{background:#FEF2F2;color:#B91C1C;border-radius:7px;padding:10px;font-size:11px;
+       margin-top:12px;display:none;}
+  .err.show{display:block;}
+  .foot{margin-top:14px;text-align:center;}
+  .foot a{color:var(--ink2);font-size:10px;cursor:pointer;text-decoration:none;}
+  .foot a:hover{color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Apply XUI Semantics</h1>
+  <p class="sub">Converts primitives to semantic tokens.</p>
+
+  <button id="go" disabled>Apply to selection</button>
+  <p class="hint" id="hint">Select a frame</p>
+
+  <div id="out" class="out"></div>
+  <div id="err" class="err"></div>
+  <div class="foot"><a id="clr">Clear saved mappings</a></div>
+</div>
+<script>
+var $ = function(id){ return document.getElementById(id); };
+function send(o){ parent.postMessage({ pluginMessage:o }, "*"); }
+var TOKENS = [];
+
+$("go").onclick = function(){
+  $("go").disabled = true; $("go").textContent = "Applying…";
+  send({type:"apply"});
+};
+$("clr").onclick = function(){ send({type:"clearOverrides"}); };
+send({type:"check"});
+
+function esc(s){ return String(s).replace(/[<>&"]/g, function(c){
+  return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+
+function renderUnmapped(list){
+  if(!list.length) return '';
+  var h = '<div class="sec"><h2>Needs mapping</h2>' +
+          '<p>Click a swatch to select those layers on canvas, then choose a token.</p>';
+  list.forEach(function(u, i){
+    h += '<div class="card" id="card'+i+'">' +
+           '<div class="ch">' +
+             '<div class="sw" style="background:'+esc(u.hex)+'" data-i="'+i+'" title="Select on canvas"></div>' +
+             '<div class="meta">' +
+               '<div class="t">'+esc(u.primitive)+'</div>' +
+               '<div class="s">'+esc(u.prop)+' · '+esc(u.type)+' · '+u.count+' layer'+(u.count>1?'s':'')+'</div>' +
+             '</div>' +
+             '<button class="sm" data-sel="'+i+'">Select</button>' +
+           '</div>' +
+           '<div class="ctl">' +
+             '<select data-sel-token="'+i+'"><option value="">Choose a token…</option>' +
+               TOKENS.map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('') +
+             '</select>' +
+             '<button class="sm" data-bind="'+i+'">Map</button>' +
+           '</div>' +
+         '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+function wire(list){
+  list.forEach(function(u, i){
+    var sw = document.querySelector('.sw[data-i="'+i+'"]');
+    var sel = document.querySelector('button[data-sel="'+i+'"]');
+    var bind = document.querySelector('button[data-bind="'+i+'"]');
+    var dd = document.querySelector('select[data-sel-token="'+i+'"]');
+    function highlight(){ send({type:"highlight", ids:u.ids}); }
+    if(sw) sw.onclick = highlight;
+    if(sel) sel.onclick = highlight;
+    if(bind) bind.onclick = function(){
+      if(!dd.value){ dd.focus(); return; }
+      send({type:"bind", sig:u.sig, token:dd.value, ids:u.ids});
+      var c = $("card"+i); if(c) c.classList.add("done");
+      bind.textContent = "Mapped";
+    };
+  });
+}
+
+onmessage = function(e){
+  var m = e.data.pluginMessage; if(!m) return;
+
+  if(m.type === "selection"){
+    $("go").disabled = m.count === 0;
+    $("go").textContent = "Apply to selection";
+    $("hint").textContent = m.count === 0 ? "Select a frame"
+      : m.count + " frame" + (m.count>1?"s":"") + " selected";
+    return;
+  }
+  if(m.type === "error"){
+    $("err").textContent = m.message; $("err").classList.add("show");
+    $("go").disabled = false; $("go").textContent = "Apply to selection";
+    return;
+  }
+  $("err").classList.remove("show");
+
+  if(m.type === "done"){
+    TOKENS = m.tokens || [];
+    $("go").disabled = false; $("go").textContent = "Apply to selection";
+    var h = '<div class="big"><b>'+m.applied+'</b><span>layers converted</span></div>';
+    h += '<div class="row"><span>Already semantic</span><b>'+m.alreadySemantic+'</b></div>';
+    h += '<div class="row"><span>Not a KoinX colour</span><b>'+m.notOurColour+'</b></div>';
+    h += renderUnmapped(m.unmapped || []);
+    $("out").innerHTML = h; $("out").classList.add("show");
+    wire(m.unmapped || []);
+    return;
+  }
+};
+</script>
+</body>
+</html>
