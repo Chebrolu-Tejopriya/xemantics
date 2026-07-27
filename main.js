@@ -17,6 +17,35 @@ function firstSolid(paints) {
   if (!Array.isArray(paints) || !paints.length) return null;
   return paints.find(p => p.type === "SOLID" && p.visible !== false) || null;
 }
+
+/**
+ * Core primitive -> semantic resolution: a saved override, else an exact
+ * RULES entry, else the nearest-step/group fallback chain. Shared between
+ * the main per-paint loop and resolveMixedTextFill() (for a mixed-fill
+ * text layer where every character-range segment must independently
+ * resolve through this exact same logic to check they all agree) — kept
+ * as one function so the two paths can never quietly drift apart.
+ */
+function resolveSemanticForPrimitive(prop, type, primitive, overrides, GROUP_INDEX) {
+  const sig = prop + "|" + type + "|" + primitive;
+  let semantic = (overrides && overrides[sig]) || RULES[sig];
+  if (!semantic) {
+    const lookup = PRIM_ALIAS[primitive] || primitive;
+    const grp = GROUP_FOR[prop + "|" + type];
+    if (grp) {
+      const c = GROUP_INDEX[grp + "|" + lookup];
+      if (c && c.length) semantic = c[0];
+    }
+    if (!semantic) {
+      const order = ["Surface", "Content", "Border", "Label"];
+      for (let g = 0; g < order.length; g++) {
+        const c = GROUP_INDEX[order[g] + "|" + lookup];
+        if (c && c.length) { semantic = c[0]; break; }
+      }
+    }
+  }
+  return semantic;
+}
 function walk(root, fn) {
   const stack = [root];
   while (stack.length) {
@@ -487,6 +516,115 @@ async function scan(nodes) {
 }
 
 /**
+ * The primitive behind one solid paint, resolved the same way the main
+ * loop does (bound variable name, tail-stripped/Light-stripped, then raw
+ * hex, then nearest-match for Surface contexts) — factored out so
+ * resolveMixedTextFill() can apply the identical logic per text segment
+ * without duplicating it by hand.
+ */
+async function primitiveForPaint(solid, node, prop, resolved, HEX_INDEX) {
+  const bv = solid.boundVariables && solid.boundVariables.color;
+  if (bv && bv.type === "VARIABLE_ALIAS") {
+    let info = resolved[bv.id];
+    if (!info) {
+      // Segment-level variable ids aren't collected by the main scan pass
+      // (only node-level boundVariables are) — resolve on demand here.
+      try {
+        const v = await figma.variables.getVariableByIdAsync(bv.id);
+        if (v) {
+          let colName = null;
+          try {
+            const c = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
+            colName = c ? c.name : null;
+          } catch (e) {}
+          info = { name: v.name, collection: colName };
+          resolved[bv.id] = info;
+        }
+      } catch (e) {}
+    }
+    if (info) {
+      if (info.collection === SEM_COLLECTION || SEMANTICS[info.name] !== undefined) {
+        return { alreadySemantic: info.name };
+      }
+      return { primitive: normalisePrim(info.name, hex(solid.color)) };
+    }
+  }
+  const rawHex = hex(solid.color);
+  let primitive = HEX_INDEX[rawHex] || null;
+  if (!primitive && GROUP_FOR[prop + "|" + node.type] === "Surface") {
+    primitive = nearestPrimitive(rawHex);
+  }
+  return { primitive: primitive };
+}
+
+/**
+ * For a TEXT node with mixed (per-character) fills: if every distinct
+ * segment resolves to the SAME semantic token, apply that token uniformly
+ * across the whole layer and return its name. If segments disagree, or any
+ * segment can't be resolved, returns null — the node is left for manual
+ * review in the "Mixed-fill layers" report instead. Only auto-fixes the
+ * unambiguous case; never guesses which of several genuinely different
+ * colours is "correct".
+ *
+ * Confirmed live: a "Total" text layer had two segments bound to two
+ * different variables ("Gray/09" and "Light/Gray/09") that both resolve to
+ * the exact same colour and the exact same semantic token
+ * (Content/content-tertiary) — a harmless authoring inconsistency, not a
+ * deliberate two-colour design, safe to flatten to one token.
+ */
+async function resolveMixedTextFill(node, prop, resolved, HEX_INDEX, GROUP_INDEX, overrides, semVars, getSem) {
+  if (prop !== "fills" || node.type !== "TEXT" || typeof node.getStyledTextSegments !== "function") return null;
+  let segments;
+  try {
+    segments = node.getStyledTextSegments(["fills", "fontName"]);
+  } catch (e) {
+    return null;
+  }
+  if (!segments || segments.length < 2) return null;
+
+  let agreed = null;
+  for (const seg of segments) {
+    const paints = seg.fills;
+    if (!Array.isArray(paints) || !paints.length) return null;
+    const solid = firstSolid(paints);
+    if (!solid) return null;
+
+    const resolvedPrim = await primitiveForPaint(solid, node, prop, resolved, HEX_INDEX);
+    let semantic;
+    if (resolvedPrim.alreadySemantic) {
+      semantic = resolvedPrim.alreadySemantic;
+    } else {
+      const primitive = resolvedPrim.primitive;
+      if (!primitive || HEX_LIGHT[primitive] === undefined) return null;
+      semantic = resolveSemanticForPrimitive(prop, node.type, primitive, overrides, GROUP_INDEX);
+    }
+    if (!semantic || !semVars[semantic]) return null;
+    if (agreed === null) agreed = semantic;
+    else if (agreed !== semantic) return null;
+  }
+  if (!agreed) return null;
+
+  const v = await getSem(agreed);
+  if (!v) return null;
+
+  try {
+    const fontsLoaded = {};
+    for (const seg of segments) {
+      const key = JSON.stringify(seg.fontName);
+      if (!fontsLoaded[key]) { await figma.loadFontAsync(seg.fontName); fontsLoaded[key] = true; }
+    }
+    const basePaint = firstSolid(segments[0].fills);
+    const newPaint = figma.variables.setBoundVariableForPaint(
+      Object.assign({}, basePaint), "color", v
+    );
+    node.setRangeFills(0, node.characters.length, [newPaint]);
+  } catch (e) {
+    return null;
+  }
+  return agreed;
+}
+
+/**
  * Rebinds node[prop][index]'s colour to `variable`, explicitly carrying the
  * paint's opacity over rather than assuming setBoundVariableForPaint
  * preserves it untouched. Pass `newOpacity` to set a specific value instead
@@ -525,9 +663,6 @@ async function applyTo(nodes, overrides) {
   const GROUP_INDEX = buildGroupIndex();
   const scanned = await scan(nodes);
   const raw = scanned.raw, resolved = scanned.resolved;
-  const mixedList = scanned.mixed.map(function (m) {
-    return { layer: (m.node.name || "").slice(0, 40), prop: m.prop, type: m.node.type, id: m.node.id };
-  });
 
   const cache = {};
   async function getSem(name) {
@@ -538,7 +673,21 @@ async function applyTo(nodes, overrides) {
     return cache[name];
   }
 
-  let applied = 0, structural = 0, removed = 0, alreadySemantic = 0, preserved = 0;
+  let applied = 0, structural = 0, removed = 0, alreadySemantic = 0, preserved = 0, mixedResolved = 0;
+
+  // Mixed-fill text layers: try to resolve automatically first (only when
+  // every distinct segment agrees on the same token — see
+  // resolveMixedTextFill()), and only report the ones that genuinely need
+  // a human decision.
+  const mixedList = [];
+  for (const m of scanned.mixed) {
+    const agreed = await resolveMixedTextFill(m.node, m.prop, resolved, HEX_INDEX, GROUP_INDEX, overrides, semVars, getSem);
+    if (agreed) {
+      mixedResolved++;
+      continue;
+    }
+    mixedList.push({ layer: (m.node.name || "").slice(0, 40), prop: m.prop, type: m.node.type, id: m.node.id });
+  }
   const unmapped = {};
   const unknown = {};
   const changes = [];
@@ -705,24 +854,7 @@ async function applyTo(nodes, overrides) {
     }
 
     const sig = t.prop + "|" + t.node.type + "|" + primitive;
-    let semantic = (overrides && overrides[sig]) || RULES[sig];
-
-    if (!semantic) {
-      // primitives with no token of their own stand in for the nearest step
-      const lookup = PRIM_ALIAS[primitive] || primitive;
-      const grp = GROUP_FOR[t.prop + "|" + t.node.type];
-      if (grp) {
-        const c = GROUP_INDEX[grp + "|" + lookup];
-        if (c && c.length) semantic = c[0];
-      }
-      if (!semantic) {
-        const order = ["Surface", "Content", "Border", "Label"];
-        for (let g = 0; g < order.length; g++) {
-          const c = GROUP_INDEX[order[g] + "|" + lookup];
-          if (c && c.length) { semantic = c[0]; break; }
-        }
-      }
-    }
+    let semantic = resolveSemanticForPrimitive(t.prop, t.node.type, primitive, overrides, GROUP_INDEX);
 
     if (!semantic || !semVars[semantic]) {
       const u = unmapped[sig] = unmapped[sig] || {
@@ -766,6 +898,7 @@ async function applyTo(nodes, overrides) {
     removed: removed,
     alreadySemantic: alreadySemantic,
     preserved: preserved,
+    mixedResolved: mixedResolved,
     unmapped: unmappedList,
     unknown: unknownList,
     tokens: tokenPalette(Object.keys(semVars).sort()),
@@ -825,7 +958,7 @@ figma.ui.onmessage = async function (msg) {
       const overrides = (await figma.clientStorage.getAsync(OVERRIDE_KEY)) || {};
       const r = await applyTo(sel, overrides);
       figma.ui.postMessage(Object.assign({ type: "done" }, r));
-      figma.notify("Applied semantics to " + (r.applied + r.structural + r.removed) + " layers");
+      figma.notify("Applied semantics to " + (r.applied + r.structural + r.removed + r.mixedResolved) + " layers");
       return;
     }
 

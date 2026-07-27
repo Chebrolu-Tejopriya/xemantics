@@ -321,13 +321,14 @@ onmessage = function(e){
   if(m.type === "done"){
     TOKENS = m.tokens || [];
     $("go").disabled = false; $("go").textContent = "Apply to selection";
-    var converted = m.applied + (m.structural||0) + (m.removed||0);
+    var converted = m.applied + (m.structural||0) + (m.removed||0) + (m.mixedResolved||0);
     var h = '<div class="big"><b>'+converted+'</b><span>layers converted</span></div>';
     if(m.structural) h += '<div class="row"><span>Structural rule (table/label)</span><b>'+m.structural+'</b></div>';
     if(m.removed) h += '<div class="row"><span>Fill/stroke removed</span><b>'+m.removed+'</b></div>';
+    if(m.mixedResolved) h += '<div class="row"><span>Mixed-fill (auto-resolved)</span><b>'+m.mixedResolved+'</b></div>';
     h += '<div class="row"><span>Already semantic</span><b>'+m.alreadySemantic+'</b></div>';
     if(m.preserved) h += '<div class="row"><span>Preserved (kept as-is)</span><b>'+m.preserved+'</b></div>';
-    if(m.mixedFills && m.mixedFills.length) h += '<div class="row"><span>Mixed-fill layers</span><b>'+m.mixedFills.length+'</b></div>';
+    if(m.mixedFills && m.mixedFills.length) h += '<div class="row"><span>Mixed-fill layers (need review)</span><b>'+m.mixedFills.length+'</b></div>';
     h += renderUnmapped(m.unmapped || []);
     h += renderUnknown(m.unknown || []);
     h += renderMixedFills(m.mixedFills || []);
