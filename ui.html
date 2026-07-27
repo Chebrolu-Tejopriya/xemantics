@@ -37,9 +37,28 @@
   .meta .t{font-family:var(--mono);font-size:10.5px;font-weight:600;
            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .meta .s{font-size:10px;color:var(--ink2);}
-  .ctl{display:flex;gap:6px;align-items:center;}
-  select{flex:1;font:inherit;font-size:11px;padding:5px 7px;border:1px solid var(--line);
-         border-radius:6px;background:#fff;color:var(--ink);min-width:0;}
+  .ctl{position:relative;display:flex;gap:6px;align-items:center;}
+  .picker{flex:1;min-width:0;}
+  .picker-btn{width:100%;display:flex;align-items:center;gap:7px;font:inherit;font-size:11px;
+              padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:#fff;
+              color:var(--ink);cursor:pointer;text-align:left;}
+  .picker-btn:hover{border-color:#94A3B8;}
+  .picker-btn .ph{color:var(--ink2);}
+  .picker-btn .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .picker-btn .car{color:var(--ink2);font-size:9px;flex:0 0 auto;}
+  .menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;
+        border:1px solid var(--line);border-radius:7px;box-shadow:0 6px 20px rgba(15,23,42,.14);
+        z-index:20;max-height:220px;display:flex;flex-direction:column;overflow:hidden;}
+  .menu.hide{display:none;}
+  .menu input{font:inherit;font-size:11px;border:none;border-bottom:1px solid var(--line);
+              padding:7px 8px;outline:none;}
+  .menu .opts{overflow-y:auto;}
+  .opt{display:flex;align-items:center;gap:7px;padding:6px 8px;cursor:pointer;}
+  .opt:hover{background:#F8FAFC;}
+  .opt .lbl{font-family:var(--mono);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .opt .empty{padding:10px 8px;color:var(--ink2);font-size:11px;}
+  .sw.split{background:none;padding:0;overflow:hidden;display:flex;}
+  .sw.split i{flex:1;display:block;}
   .err{background:#FEF2F2;color:#B91C1C;border-radius:7px;padding:10px;font-size:11px;
        margin-top:12px;display:none;}
   .err.show{display:block;}
@@ -63,7 +82,8 @@
 <script>
 var $ = function(id){ return document.getElementById(id); };
 function send(o){ parent.postMessage({ pluginMessage:o }, "*"); }
-var TOKENS = [];
+var TOKENS = [];   // [{name, light, dark}]
+var openMenu = null;
 
 $("go").onclick = function(){
   $("go").disabled = true; $("go").textContent = "Applying…";
@@ -75,6 +95,15 @@ send({type:"check"});
 function esc(s){ return String(s).replace(/[<>&"]/g, function(c){
   return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
 
+/** Two-tone swatch (Light | Dark); falls back to a single tone if only one is known. */
+function swatchHtml(light, dark, extraAttrs){
+  var l = light || dark || '#E2E8F0';
+  var d = dark || light || '#E2E8F0';
+  return '<div class="sw split" '+(extraAttrs||'')+' title="Light '+esc(l)+' / Dark '+esc(d)+'">' +
+           '<i style="background:'+esc(l)+'"></i><i style="background:'+esc(d)+'"></i>' +
+         '</div>';
+}
+
 function renderUnmapped(list){
   if(!list.length) return '';
   var h = '<div class="sec"><h2>Needs mapping</h2>' +
@@ -82,7 +111,7 @@ function renderUnmapped(list){
   list.forEach(function(u, i){
     h += '<div class="card" id="card'+i+'">' +
            '<div class="ch">' +
-             '<div class="sw" style="background:'+esc(u.hex)+'" data-i="'+i+'" title="Select on canvas"></div>' +
+             swatchHtml(u.hex, u.hex, 'data-i="'+i+'"') +
              '<div class="meta">' +
                '<div class="t">'+esc(u.primitive)+'</div>' +
                '<div class="s">'+esc(u.prop)+' · '+esc(u.type)+' · '+u.count+' layer'+(u.count>1?'s':'')+'</div>' +
@@ -90,10 +119,16 @@ function renderUnmapped(list){
              '<button class="sm" data-sel="'+i+'">Select</button>' +
            '</div>' +
            '<div class="ctl">' +
-             '<select data-sel-token="'+i+'"><option value="">Choose a token…</option>' +
-               TOKENS.map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('') +
-             '</select>' +
-             '<button class="sm" data-bind="'+i+'">Map</button>' +
+             '<div class="picker" data-picker="'+i+'">' +
+               '<button type="button" class="picker-btn" data-picker-btn="'+i+'">' +
+                 '<span class="ph">Choose a token…</span><span class="car">▾</span>' +
+               '</button>' +
+               '<div class="menu hide" data-menu="'+i+'">' +
+                 '<input type="text" placeholder="Search tokens…" data-search="'+i+'">' +
+                 '<div class="opts" data-opts="'+i+'"></div>' +
+               '</div>' +
+             '</div>' +
+             '<button class="sm" data-bind="'+i+'" disabled>Map</button>' +
            '</div>' +
          '</div>';
   });
@@ -101,20 +136,81 @@ function renderUnmapped(list){
   return h;
 }
 
+function optionsHtml(id){
+  return TOKENS.map(function(t, ti){
+    return '<div class="opt" data-opt="'+id+'" data-tok="'+ti+'">' +
+             swatchHtml(t.light, t.dark) +
+             '<span class="lbl">'+esc(t.name)+'</span>' +
+           '</div>';
+  }).join('') || '<div class="empty">No semantic tokens found</div>';
+}
+
+function closeMenu(){
+  if(!openMenu) return;
+  var m = document.querySelector('.menu[data-menu="'+openMenu+'"]');
+  if(m) m.classList.add('hide');
+  openMenu = null;
+}
+
+function wirePicker(i, onChoose){
+  var btn = document.querySelector('button[data-picker-btn="'+i+'"]');
+  var menu = document.querySelector('.menu[data-menu="'+i+'"]');
+  var opts = document.querySelector('.opts[data-opts="'+i+'"]');
+  var search = document.querySelector('input[data-search="'+i+'"]');
+  opts.innerHTML = optionsHtml(i);
+
+  btn.onclick = function(e){
+    e.stopPropagation();
+    var was = menu.classList.contains('hide');
+    closeMenu();
+    if(was){ menu.classList.remove('hide'); openMenu = i; search.value=''; filterOpts(); search.focus(); }
+  };
+  function filterOpts(){
+    var q = search.value.trim().toLowerCase();
+    var rows = opts.querySelectorAll('.opt');
+    rows.forEach(function(r){
+      var name = TOKENS[+r.getAttribute('data-tok')].name.toLowerCase();
+      r.style.display = (!q || name.indexOf(q) > -1) ? 'flex' : 'none';
+    });
+  }
+  search.oninput = filterOpts;
+  search.onclick = function(e){ e.stopPropagation(); };
+  opts.querySelectorAll('.opt').forEach(function(row){
+    row.onclick = function(e){
+      e.stopPropagation();
+      var tok = TOKENS[+row.getAttribute('data-tok')];
+      btn.innerHTML = swatchHtml(tok.light, tok.dark) +
+                      '<span class="lbl">'+esc(tok.name)+'</span><span class="car">▾</span>';
+      btn.setAttribute('data-value', tok.name);
+      closeMenu();
+      onChoose(tok.name);
+    };
+  });
+}
+
+document.addEventListener('click', closeMenu);
+
 function wire(list){
   list.forEach(function(u, i){
     var sw = document.querySelector('.sw[data-i="'+i+'"]');
     var sel = document.querySelector('button[data-sel="'+i+'"]');
     var bind = document.querySelector('button[data-bind="'+i+'"]');
-    var dd = document.querySelector('select[data-sel-token="'+i+'"]');
+    var pbtn = document.querySelector('button[data-picker-btn="'+i+'"]');
     function highlight(){ send({type:"highlight", ids:u.ids}); }
     if(sw) sw.onclick = highlight;
     if(sel) sel.onclick = highlight;
-    if(bind) bind.onclick = function(){
-      if(!dd.value){ dd.focus(); return; }
-      send({type:"bind", sig:u.sig, token:dd.value, ids:u.ids});
+
+    wirePicker(i, function(tokenName){
+      bind.disabled = false;
+      bind.setAttribute('data-chosen', tokenName);
+    });
+
+    bind.onclick = function(){
+      var tokenName = bind.getAttribute('data-chosen');
+      if(!tokenName){ pbtn.click(); return; }
+      send({type:"bind", sig:u.sig, token:tokenName, ids:u.ids});
       var c = $("card"+i); if(c) c.classList.add("done");
-      bind.textContent = "Mapped";
+      bind.textContent = "Mapped"; bind.disabled = true;
     };
   });
 }
@@ -139,7 +235,10 @@ onmessage = function(e){
   if(m.type === "done"){
     TOKENS = m.tokens || [];
     $("go").disabled = false; $("go").textContent = "Apply to selection";
-    var h = '<div class="big"><b>'+m.applied+'</b><span>layers converted</span></div>';
+    var converted = m.applied + (m.structural||0) + (m.removed||0);
+    var h = '<div class="big"><b>'+converted+'</b><span>layers converted</span></div>';
+    if(m.structural) h += '<div class="row"><span>Structural rule (table/label)</span><b>'+m.structural+'</b></div>';
+    if(m.removed) h += '<div class="row"><span>Fill/stroke removed</span><b>'+m.removed+'</b></div>';
     h += '<div class="row"><span>Already semantic</span><b>'+m.alreadySemantic+'</b></div>';
     h += '<div class="row"><span>Not a KoinX colour</span><b>'+m.notOurColour+'</b></div>';
     h += renderUnmapped(m.unmapped || []);

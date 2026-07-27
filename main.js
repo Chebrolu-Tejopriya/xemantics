@@ -26,6 +26,92 @@ function walk(root, fn) {
   }
 }
 
+/** True if `node` has an immediate child whose name is a known table-row name. */
+function hasTableRowChild(node) {
+  if (!node || !("children" in node)) return false;
+  for (const c of node.children) if (TABLE_ROW_NAMES.indexOf(c.name) > -1) return true;
+  return false;
+}
+
+/**
+ * "header" if `node` IS a table Heading instance itself (sitting beside
+ * matching row siblings), "row" if `node` IS a table row instance itself,
+ * else null. Deliberately an identity check, not an ancestor walk: both
+ * instances contain "Stable Table/ Cell" children with their own fills (and
+ * text with its own colour), which already resolve correctly through the
+ * normal primitive rules — sweeping them into this override too was the bug
+ * (it forced the header's cell text onto Surface/surface-secondary instead
+ * of leaving it to resolve to Content/content-primary as it should).
+ */
+function tableRole(node) {
+  if (TABLE_ROW_NAMES.indexOf(node.name) > -1) return "row";
+  if (TABLE_HEADER_NAMES.indexOf(node.name) > -1 && hasTableRowChild(node.parent)) return "header";
+  return null;
+}
+
+/** True if `node` itself, or any ancestor, is a known table-row instance. */
+function withinTableRow(node) {
+  let n = node, depth = 0;
+  while (n && depth < 6) {
+    if (TABLE_ROW_NAMES.indexOf(n.name) > -1) return true;
+    n = n.parent;
+    depth++;
+  }
+  return false;
+}
+
+/** The semantic name `node`'s own `prop` is bound to, or null. */
+function ownBoundSemanticName(node, prop, resolved) {
+  const bv = node.boundVariables && node.boundVariables[prop];
+  if (!bv || !bv.length || bv[0].type !== "VARIABLE_ALIAS") return null;
+  const info = resolved[bv[0].id];
+  return info ? info.name : null;
+}
+
+/**
+ * True only if `node`'s fill AND stroke BOTH match REMOVE_IN_TABLE_ROW at
+ * once — checked jointly, not per-paint, so a node with only one of the two
+ * (e.g. a legitimately white element with some other stroke) is left alone.
+ */
+function matchesRemovePattern(node, resolved) {
+  return ownBoundSemanticName(node, "fills", resolved) === REMOVE_IN_TABLE_ROW.fillSemantic &&
+         REMOVE_IN_TABLE_ROW.strokeSemantics.indexOf(ownBoundSemanticName(node, "strokes", resolved)) > -1;
+}
+
+/**
+ * The primitive behind `node`'s own first solid fill, or null. Synchronous —
+ * relies on `resolved`/`HEX_INDEX` already being populated by scan(), since
+ * walk() visits every node in the tree (not just text), so an ancestor's own
+ * fill binding was already collected and resolved as a side effect.
+ */
+function ownFillPrimitive(node, resolved, HEX_INDEX) {
+  if (!node || !("fills" in node)) return null;
+  const solid = firstSolid(node.fills);
+  if (!solid) return null;
+  const bv = node.boundVariables && node.boundVariables.fills;
+  if (bv && bv.length && bv[0].type === "VARIABLE_ALIAS") {
+    const info = resolved[bv[0].id];
+    return info ? normalisePrim(info.name) : null;
+  }
+  return HEX_INDEX[hex(solid.color)] || null;
+}
+
+/**
+ * True if `node` (a TEXT layer) sits directly on, or a couple of wrapper
+ * frames inside, a strong brand/status background — see STRONG_BG_PRIMITIVES
+ * in rules.js for why this needs to force an absolute token.
+ */
+function onStrongBackground(node, resolved, HEX_INDEX) {
+  let n = node.parent, depth = 0;
+  while (n && depth < 3) {
+    const prim = ownFillPrimitive(n, resolved, HEX_INDEX);
+    if (prim && STRONG_BG_PRIMITIVES[prim]) return true;
+    n = n.parent;
+    depth++;
+  }
+  return false;
+}
+
 /** Strip a library prefix so "Light/Gray/12" and "Gray/12" both match. */
 function normalisePrim(name) {
   if (!name) return null;
@@ -40,6 +126,7 @@ function normalisePrim(name) {
 
 function buildHexIndex() {
   const idx = {};
+  for (const h in HEX_ALIAS) idx[h] = HEX_ALIAS[h];
   for (const n in HEX_LIGHT) if (!idx[HEX_LIGHT[n]]) idx[HEX_LIGHT[n]] = n;
   for (const n in HEX_DARK)  if (!idx[HEX_DARK[n]])  idx[HEX_DARK[n]]  = n;
   return idx;
@@ -134,12 +221,58 @@ async function applyTo(nodes, overrides) {
     return cache[name];
   }
 
-  let applied = 0, alreadySemantic = 0, notOurColour = 0;
+  let applied = 0, structural = 0, removed = 0, alreadySemantic = 0, notOurColour = 0;
   const unmapped = {};
   const changes = [];
 
   for (let i = 0; i < raw.length; i++) {
     const t = raw[i];
+
+    // Remove-fill/stroke rule: this exact broken pair, nested inside a table
+    // row, gets deleted rather than recoloured — see REMOVE_IN_TABLE_ROW in
+    // rules.js. Requires BOTH fill and stroke to match at once (checked on
+    // the node directly, not per-paint) and runs before everything else so
+    // it also catches the case where it's already bound to these semantic
+    // tokens directly.
+    if ((t.prop === "fills" || t.prop === "strokes") &&
+        matchesRemovePattern(t.node, resolved) && withinTableRow(t.node)) {
+      t.node[t.prop] = [];
+      removed++;
+      if (changes.length < 50) {
+        changes.push({ layer: (t.node.name || "").slice(0, 24), from: t.prop, to: "(removed)" });
+      }
+      continue;
+    }
+
+    // Structural rules win regardless of the underlying primitive, and even
+    // override a layer that's already (wrongly) bound to a semantic token —
+    // see rules.js for what each one is fixing and why.
+    const role = tableRole(t.node);
+    let forced = (role === "header" && t.prop === "fills") ? TABLE_HEADER_SEMANTIC
+               : (role === "row" && t.prop === "strokes") ? TABLE_BORDER_SEMANTIC
+               : null;
+    if (!forced && t.prop === "fills" && t.node.type === "TEXT" &&
+        onStrongBackground(t.node, resolved, HEX_INDEX)) {
+      forced = TEXT_ON_STRONG_BG_SEMANTIC;
+    }
+    if (!forced && t.varId) {
+      const boundInfo = resolved[t.varId];
+      if (boundInfo && NAME_ALIAS[boundInfo.name]) forced = NAME_ALIAS[boundInfo.name];
+    }
+    if (forced && semVars[forced]) {
+      const v = await getSem(forced);
+      if (v) {
+        const paints = t.node[t.prop].map(function (p) { return Object.assign({}, p); });
+        paints[0] = figma.variables.setBoundVariableForPaint(paints[0], "color", v);
+        t.node[t.prop] = paints;
+        structural++;
+        if (changes.length < 50) {
+          changes.push({ layer: (t.node.name || "").slice(0, 24), from: "(structural rule)", to: forced });
+        }
+        continue;
+      }
+    }
+
     let primitive = null;
 
     if (t.varId) {
@@ -215,12 +348,26 @@ async function applyTo(nodes, overrides) {
 
   return {
     applied: applied,
+    structural: structural,
+    removed: removed,
     alreadySemantic: alreadySemantic,
     notOurColour: notOurColour,
     unmapped: unmappedList,
-    tokens: Object.keys(semVars).sort(),
+    tokens: tokenPalette(Object.keys(semVars).sort()),
     changes: changes,
   };
+}
+
+/** Token names paired with their Light/Dark hex, so the picker can show a swatch. */
+function tokenPalette(names) {
+  return names.map(function (n) {
+    const prim = SEMANTICS[n];
+    return {
+      name: n,
+      light: (prim && HEX_LIGHT[prim]) || null,
+      dark: (prim && HEX_DARK[prim]) || null,
+    };
+  });
 }
 
 async function bindSignature(sig, semanticName, ids) {
@@ -262,7 +409,7 @@ figma.ui.onmessage = async function (msg) {
       const overrides = (await figma.clientStorage.getAsync(OVERRIDE_KEY)) || {};
       const r = await applyTo(sel, overrides);
       figma.ui.postMessage(Object.assign({ type: "done" }, r));
-      figma.notify("Applied semantics to " + r.applied + " layers");
+      figma.notify("Applied semantics to " + (r.applied + r.structural + r.removed) + " layers");
       return;
     }
 

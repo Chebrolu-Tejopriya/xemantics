@@ -215,6 +215,142 @@ const PRIM_ALIAS = {
 };
 
 /**
+ * Structural rule for tables: a table's header fill is always
+ * surface-secondary, and a table's row border is always border-secondary,
+ * regardless of which primitive is actually sitting underneath it.
+ *
+ * This exists because the primitive-matching rules above can't fix it — in
+ * the "Customers" reference table (Train section), the Heading instance's
+ * fill is correctly bound to Gray/02-Background, and Gray/02-Background
+ * *is* surface-primary everywhere else in the file. The header primitive
+ * itself was hand-picked wrong, not merely unmapped, so no primitive rule
+ * can distinguish this case from a legitimate surface-primary layer. Same
+ * story for the row border, bound to a stray "[Day]/Gray/04" (#D3E0E6)
+ * that doesn't match the system's real Gray/04 at all.
+ *
+ * Confirmed again in the "Transactions/Categrozed" table, which uses a
+ * *different* component-naming pair ("Transaction Heading" / "Transaction")
+ * for the exact same header/border bug — its header used a stray
+ * "[Day]/Gray/03" and its row border the same stray "[Day]/Gray/04", while
+ * the correct reference version of that same screen (node 2892:13284) uses
+ * clean Surface/surface-secondary and Border/border-secondary respectively.
+ * That confirms both the fix and that KoinX has more than one table-
+ * component naming convention, so this is a list of known pairs, not a
+ * single name.
+ */
+const TABLE_HEADER_NAMES = ["Heading", "Transaction Heading"];
+const TABLE_ROW_NAMES = ["Table row", "Transaction"];
+const TABLE_HEADER_SEMANTIC = "Surface/surface-secondary";
+const TABLE_BORDER_SEMANTIC = "Border/border-secondary";
+
+/**
+ * Structural rule: text sitting on a strong brand or status background must
+ * use an absolute token, never a theme-reactive Content token.
+ *
+ * Found live in the Navbar component: the active "Customers" item's
+ * background is genuinely bound to Surface/surface-brand-primary, and its
+ * label is bound to Content/content-primary — already a semantic token, just
+ * the wrong one. It happens to render white right now only because the file
+ * is being viewed in Dark theme, where content-primary resolves to white; in
+ * Light theme content-primary resolves near-black and would go invisible on
+ * the same blue pill. Same failure mode as the original Add-Customer button
+ * fix, just triggered by background context instead of the text's own colour.
+ *
+ * Scoped to the saturated "primary"/"solid" tier only — surface-brand-
+ * secondary/subtle and the error/warning/success secondary/tertiary/subtle
+ * tiers are pale tints that need normal dark text, not white, or they'd
+ * become unreadable.
+ */
+const STRONG_BG_PRIMITIVES = {
+  "Blue/09(Base)": 1,     // surface-brand-primary
+  "Blue/10": 1,           // surface-brand-solid
+  "Red/09(Base)": 1,      // surface-error-primary
+  "Red/10": 1,            // surface-error-solid
+  "Orange/09(Base)": 1,   // surface-warning-primary
+  "Orange/10": 1,         // surface-warning-solid
+  "Green/09(Base)": 1,    // surface-success-primary
+  "Green/10": 1,          // surface-success-solid
+};
+const TEXT_ON_STRONG_BG_SEMANTIC = "Content/content-absolute-white";
+
+/**
+ * Legacy/foreign variable NAMES that should be treated as directly aliasing
+ * a semantic token — not primitives, so no hex or primitive lookup could
+ * ever resolve them; the plugin would otherwise drop them as "not a KoinX
+ * colour" and never even attempt a rule.
+ *
+ * "Label/Background/<letter>" / "Label/Foreground/<letter>" (and their
+ * "Light/"-prefixed forms) are a legacy Label component found live on the
+ * Transactions/Categrozed table's Category cells, with FOUR distinct
+ * colour-coded suffixes (S/I/P/R), not one generic style — an earlier pass
+ * of this rule collapsed all four to a flat neutral grey, which erased the
+ * colour-coding entirely. Each is now mapped to whichever defined Label
+ * token its actual hex is closest to:
+ *
+ *   S  bg #E3FCEF fg #00AE78  -> positive  (bg #E0FAEE fg #167E4D — green family)
+ *   I  bg #FFE5F5 fg #D02090  -> accent-3  (bg #FAE0EE fg #BF2275 — magenta family)
+ *   P  bg #FFF2E6 fg #FF6347  -> warning   (bg #FAEEE0 fg #985D1B — bg near-exact, orange family)
+ *   R  bg #FFF1F1 fg #B22222  -> negative  (bg #FAE1E0 fg #C32822 — fg near-exact, red family)
+ *
+ * This is inferred from colour proximity, not confirmed against what each
+ * letter stands for (e.g. whether "S" really means a sales-type category) —
+ * worth a visual spot-check against the correct reference table
+ * (node 2892:13284) once applied.
+ */
+const NAME_ALIAS = {
+  "Label/Background/S": "Label/label-positive-bg",
+  "Light/Label/Background/S": "Label/label-positive-bg",
+  "Label/Foreground/S": "Label/label-positive-content",
+  "Light/Label/Foreground/S": "Label/label-positive-content",
+
+  "Label/Background/I": "Label/label-accent-3-bg",
+  "Light/Label/Background/I": "Label/label-accent-3-bg",
+  "Label/Foreground/I": "Label/label-accent-3-content",
+  "Light/Label/Foreground/I": "Label/label-accent-3-content",
+
+  "Label/Background/P": "Label/label-warning-bg",
+  "Light/Label/Background/P": "Label/label-warning-bg",
+  "Label/Foreground/P": "Label/label-warning-content",
+  "Light/Label/Foreground/P": "Label/label-warning-content",
+
+  "Label/Background/R": "Label/label-negative-bg",
+  "Light/Label/Background/R": "Label/label-negative-bg",
+  "Label/Foreground/R": "Label/label-negative-content",
+  "Light/Label/Foreground/R": "Label/label-negative-content",
+};
+
+/**
+ * A wrapper whose fill is bound to Surface/surface-absolute AND whose stroke
+ * is bound to one of these Border tokens, nested inside a table row, should
+ * have both removed entirely rather than recoloured.
+ *
+ * Confirmed on the Transactions/Categrozed table's Category cell wrapper: it
+ * carries this fill+stroke pair, sized to the full cell, while every other
+ * cell wrapper in the same row has no fill of its own at all — transparent,
+ * letting the row's own background show through. An opaque theme-invariant
+ * white swatch here isn't a wrong colour choice, it's not supposed to have a
+ * fill at all. Two stroke variants confirmed live so far (border-tertiary on
+ * one instance, border-primary on another — same wrapper pattern, different
+ * row). Matched by the semantic tokens themselves, not by the wrapper's own
+ * layer name — Figma auto-named it the generic "Component 66"/"Component
+ * 70", too fragile to key a structural rule on.
+ */
+const REMOVE_IN_TABLE_ROW = {
+  fillSemantic: "Surface/surface-absolute",
+  strokeSemantics: ["Border/border-tertiary", "Border/border-primary"],
+};
+
+/**
+ * Raw hex values seen in the file that aren't an exact primitive swatch but
+ * should be treated as one — usually a slightly-off value from manual
+ * colour entry rather than picking the variable. Checked before the normal
+ * hex lookup, so it wins over whatever primitive happens to share a name.
+ */
+const HEX_ALIAS = {
+  "#EFF2F5": "Gray/02-Background",   // -> surface-primary
+};
+
+/**
  * Fallback when no exact rule exists: which token group does this context
  * belong to? Derived from the reference screens, where property + node type
  * predicted the group correctly ~95% of the time.
