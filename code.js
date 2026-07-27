@@ -372,6 +372,19 @@ const PRESERVE_NAME_PATTERNS = [
 ];
 
 /**
+ * How close a raw, unbound hex has to be to a known primitive (Euclidean
+ * RGB distance, 0-441 max) before it's treated as a near-duplicate of that
+ * primitive rather than a genuinely unknown colour.
+ *
+ * Confirmed need: a nav item's selected-state fill is a raw #E5EEFF with no
+ * Variable or Style binding at all — distance to Blue/03 (#EAF2FF, what
+ * Surface/surface-brand-secondary aliases) is ~6, clearly the same colour
+ * with a slightly different value from manual entry, not a different one.
+ * 20 is tight enough that unrelated hues (typically 100+) never match.
+ */
+const NEAREST_MATCH_MAX_DISTANCE = 20;
+
+/**
  * A wrapper whose fill is bound to Surface/surface-absolute AND whose stroke
  * is bound to one of these Border tokens, nested inside a table row, should
  * have both removed entirely rather than recoloured.
@@ -653,6 +666,33 @@ function buildHexIndex() {
   for (const n in HEX_DARK)  if (!idx[HEX_DARK[n]])  idx[HEX_DARK[n]]  = n;
   return idx;
 }
+
+/** Euclidean RGB distance between two "#RRGGBB" strings. */
+function hexDistance(a, b) {
+  const ai = parseInt(a.slice(1), 16), bi = parseInt(b.slice(1), 16);
+  const ar = (ai >> 16) & 255, ag = (ai >> 8) & 255, ab = ai & 255;
+  const br = (bi >> 16) & 255, bg = (bi >> 8) & 255, bb = bi & 255;
+  return Math.sqrt((ar - br) ** 2 + (ag - bg) ** 2 + (ab - bb) ** 2);
+}
+
+/**
+ * The nearest known primitive to a raw hex, checked against both the Light
+ * and Dark palettes (a hardcoded value could be a copy-paste of either),
+ * or null if nothing is within NEAREST_MATCH_MAX_DISTANCE. Last resort —
+ * only tried after exact hex/name matching has already failed.
+ */
+function nearestPrimitive(hexColor) {
+  let best = null, bestDist = Infinity;
+  for (const n in HEX_LIGHT) {
+    const d = hexDistance(hexColor, HEX_LIGHT[n]);
+    if (d < bestDist) { bestDist = d; best = n; }
+  }
+  for (const n in HEX_DARK) {
+    const d = hexDistance(hexColor, HEX_DARK[n]);
+    if (d < bestDist) { bestDist = d; best = n; }
+  }
+  return bestDist <= NEAREST_MATCH_MAX_DISTANCE ? best : null;
+}
 function buildGroupIndex() {
   const g = {};
   for (const sem in SEMANTICS) {
@@ -851,6 +891,15 @@ async function applyTo(nodes, overrides) {
       }
     }
     if (!primitive) primitive = HEX_INDEX[t.hex] || null;
+
+    // Raw, unbound colour with no exact primitive match — for a Surface
+    // context specifically (per explicit request), snap to the nearest
+    // known primitive instead of giving up. Scoped to unbound colours only
+    // (no varId at all): a NAMED foreign colour was presumably chosen on
+    // purpose and stays in "Unrecognised colour" rather than being guessed.
+    if (!primitive && !t.varId && GROUP_FOR[t.prop + "|" + t.node.type] === "Surface") {
+      primitive = nearestPrimitive(t.hex);
+    }
 
     if (!primitive || HEX_LIGHT[primitive] === undefined) {
       // Doesn't match any known primitive — surfaced as "Unrecognised colour"

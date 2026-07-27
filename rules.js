@@ -372,6 +372,19 @@ const PRESERVE_NAME_PATTERNS = [
 ];
 
 /**
+ * How close a raw, unbound hex has to be to a known primitive (Euclidean
+ * RGB distance, 0-441 max) before it's treated as a near-duplicate of that
+ * primitive rather than a genuinely unknown colour.
+ *
+ * Confirmed need: a nav item's selected-state fill is a raw #E5EEFF with no
+ * Variable or Style binding at all — distance to Blue/03 (#EAF2FF, what
+ * Surface/surface-brand-secondary aliases) is ~6, clearly the same colour
+ * with a slightly different value from manual entry, not a different one.
+ * 20 is tight enough that unrelated hues (typically 100+) never match.
+ */
+const NEAREST_MATCH_MAX_DISTANCE = 20;
+
+/**
  * A wrapper whose fill is bound to Surface/surface-absolute AND whose stroke
  * is bound to one of these Border tokens, nested inside a table row, should
  * have both removed entirely rather than recoloured.
