@@ -858,27 +858,26 @@ async function collectSemanticVars() {
   if (S) for (const v of local) if (v.variableCollectionId === S.id) byName[v.name] = v;
   if (Object.keys(byName).length) return byName;
 
-  if (!figma.teamLibrary) return byName;
-  let libCols;
+  // Wrapped as one block, including the `figma.teamLibrary` property access
+  // itself: without the "teamlibrary" permission in manifest.json, simply
+  // reading that property throws synchronously (not just calling its
+  // methods) — confirmed live, this surfaced as a raw, confusing internal
+  // Figma error instead of falling through cleanly to the message below.
   try {
-    libCols = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
-  } catch (e) {
-    return byName;
-  }
-  const libMatch = libCols.find(c => c.name === SEM_COLLECTION);
-  if (!libMatch) return byName;
+    if (!figma.teamLibrary) return byName;
+    const libCols = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+    const libMatch = libCols.find(c => c.name === SEM_COLLECTION);
+    if (!libMatch) return byName;
 
-  let libVars;
-  try {
-    libVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libMatch.key);
+    const libVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libMatch.key);
+    for (const lv of libVars) {
+      try {
+        const imported = await figma.variables.importVariableByKeyAsync(lv.key);
+        if (imported) byName[imported.name] = imported;
+      } catch (e) {}
+    }
   } catch (e) {
     return byName;
-  }
-  for (const lv of libVars) {
-    try {
-      const imported = await figma.variables.importVariableByKeyAsync(lv.key);
-      if (imported) byName[imported.name] = imported;
-    } catch (e) {}
   }
   return byName;
 }
