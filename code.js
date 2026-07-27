@@ -141,12 +141,22 @@ const RULES = {
   "strokes|LINE|Gray/07": "Border/border-primary",
 
   // ---- icons / vectors
+  //
+  // Gray/05, Gray/06, and Gray/07 used to route to Border/* here, copied
+  // verbatim from the separate strokes|LINE rules for the same greys
+  // (dividers drawn as LINE nodes, correctly Border). That's a different
+  // shape of layer — an icon glyph's own fill isn't a divider — and it was
+  // wrongly conflated with genuine border colour. Confirmed live: folder/
+  // exchange icon glyphs (Binance, CoinDCX, Coinbase, wallet icons) were
+  // bound to Border/border-secondary instead of a Content token. Redirected
+  // to Content/content-quaternary — the lightest defined Content step, no
+  // exact Gray/05-07 equivalent exists in this token system.
   "fills|VECTOR|Gray/12": "Content/content-primary",
   "fills|VECTOR|Gray/10": "Content/content-secondary",
   "fills|VECTOR|Gray/09": "Content/content-tertiary",
   "fills|VECTOR|Gray/08": "Content/content-quaternary",
-  "fills|VECTOR|Gray/07": "Border/border-primary",
-  "fills|VECTOR|Gray/05": "Border/border-secondary",
+  "fills|VECTOR|Gray/07": "Content/content-quaternary",
+  "fills|VECTOR|Gray/05": "Content/content-quaternary",
   "fills|VECTOR|Gray/01-Surface": "Surface/surface-raised",
   "fills|VECTOR|Absolute/White": "Content/content-absolute-white",
   "fills|VECTOR|Absolute/Black": "Content/content-absolute-black",
@@ -188,7 +198,7 @@ const RULES = {
   "strokes|RECTANGLE|Gray/06": "Border/border-primary",
   "strokes|LINE|Gray/06": "Border/border-primary",
   "strokes|VECTOR|Gray/06": "Border/border-primary",
-  "fills|VECTOR|Gray/06": "Border/border-primary",
+  "fills|VECTOR|Gray/06": "Content/content-quaternary",   // fill, not a stroke — same icon-vs-border fix as Gray/05 and Gray/07 above
   "fills|TEXT|Gray/11": "Content/content-primary",
   "fills|VECTOR|Gray/11": "Content/content-primary",
   "fills|ELLIPSE|Gray/11": "Content/content-primary",
