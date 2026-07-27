@@ -413,10 +413,24 @@ async function scan(nodes) {
   const raw = [];
   const varIds = {};
   const styleIds = {};
+  const mixed = [];
   for (const root of nodes) {
     walk(root, n => {
       for (const prop of ["fills", "strokes"]) {
         if (!(prop in n)) continue;
+        if (!Array.isArray(n[prop])) {
+          // figma.mixed — a text layer with more than one colour across its
+          // characters (or a mixed multi-node read). firstSolid() requires
+          // an array and would silently return null for this, dropping the
+          // layer from `raw` entirely: not converted, not flagged, no trace
+          // anywhere. Confirmed live: several text layers ("Total",
+          // "$25,800", "Salaries and Employee Wages:") were invisible to
+          // every report for exactly this reason. Surfaced explicitly
+          // instead, since there's no single colour here to offer a "Map"
+          // dropdown for — this needs a human to look at the layer itself.
+          mixed.push({ node: n, prop: prop });
+          continue;
+        }
         const solid = firstSolid(n[prop]);
         if (!solid) continue;
         const bv = n.boundVariables && n.boundVariables[prop];
@@ -443,7 +457,7 @@ async function scan(nodes) {
   const resolved = await resolveVarNames(Object.keys(varIds));
   const styleNames = await resolveStyleNames(Object.keys(styleIds));
   for (const id in styleNames) resolved["style:" + id] = styleNames[id];
-  return { raw: raw, resolved: resolved };
+  return { raw: raw, resolved: resolved, mixed: mixed };
 }
 
 /**
@@ -485,6 +499,9 @@ async function applyTo(nodes, overrides) {
   const GROUP_INDEX = buildGroupIndex();
   const scanned = await scan(nodes);
   const raw = scanned.raw, resolved = scanned.resolved;
+  const mixedList = scanned.mixed.map(function (m) {
+    return { layer: (m.node.name || "").slice(0, 40), prop: m.prop, type: m.node.type, id: m.node.id };
+  });
 
   const cache = {};
   async function getSem(name) {
@@ -729,6 +746,7 @@ async function applyTo(nodes, overrides) {
     changes: changes,
     alreadySemanticSample: alreadySemanticSample,
     unresolvedVarSample: unresolvedVarSample,
+    mixedFills: mixedList,
   };
 }
 

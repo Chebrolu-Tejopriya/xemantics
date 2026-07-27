@@ -269,6 +269,38 @@ function wire(list, kind){
   });
 }
 
+/**
+ * Layers with mixed fills (more than one colour across the same layer,
+ * e.g. a few differently-coloured characters within one text node) —
+ * these were previously invisible to every report (see scan() in main.js).
+ * No single colour to offer a token picker for, so this just lists them
+ * with a "Select" button so they can be found and fixed by hand in Figma.
+ */
+function renderMixedFills(list){
+  if(!list.length) return '';
+  var h = '<div class="sec"><h2>Mixed-fill layers</h2>' +
+          '<p>More than one colour on the same layer (e.g. a few differently-coloured characters in one text node) — no single token applies, click Select to find and fix it in Figma.</p>';
+  list.forEach(function(u, i){
+    h += '<div class="card">' +
+           '<div class="ch">' +
+             '<div class="meta">' +
+               '<div class="t">'+esc(u.layer)+'</div>' +
+               '<div class="s">'+esc(u.prop)+' · '+esc(u.type)+'</div>' +
+             '</div>' +
+             '<button class="sm" data-mixed-sel="'+i+'">Select</button>' +
+           '</div>' +
+         '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+function wireMixedFills(list){
+  list.forEach(function(u, i){
+    var sel = document.querySelector('button[data-mixed-sel="'+i+'"]');
+    if(sel) sel.onclick = function(){ send({type:"highlight", ids:[u.id]}); };
+  });
+}
+
 onmessage = function(e){
   var m = e.data.pluginMessage; if(!m) return;
 
@@ -295,12 +327,15 @@ onmessage = function(e){
     if(m.removed) h += '<div class="row"><span>Fill/stroke removed</span><b>'+m.removed+'</b></div>';
     h += '<div class="row"><span>Already semantic</span><b>'+m.alreadySemantic+'</b></div>';
     if(m.preserved) h += '<div class="row"><span>Preserved (kept as-is)</span><b>'+m.preserved+'</b></div>';
+    if(m.mixedFills && m.mixedFills.length) h += '<div class="row"><span>Mixed-fill layers</span><b>'+m.mixedFills.length+'</b></div>';
     h += renderUnmapped(m.unmapped || []);
     h += renderUnknown(m.unknown || []);
+    h += renderMixedFills(m.mixedFills || []);
     h += renderDiagnostics(m.alreadySemanticSample || [], m.unresolvedVarSample || []);
     $("out").innerHTML = h; $("out").classList.add("show");
     wire(m.unmapped || [], 'u');
     wire(m.unknown || [], 'x');
+    wireMixedFills(m.mixedFills || []);
     return;
   }
 };
