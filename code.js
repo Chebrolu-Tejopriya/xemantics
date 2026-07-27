@@ -1036,6 +1036,8 @@ async function applyTo(nodes, overrides) {
   const unmapped = {};
   const unknown = {};
   const changes = [];
+  const alreadySemanticSample = [];
+  const unresolvedVarSample = [];
 
   for (let i = 0; i < raw.length; i++) {
     const t = raw[i];
@@ -1113,9 +1115,25 @@ async function applyTo(nodes, overrides) {
       if (info) {
         if (info.collection === SEM_COLLECTION || SEMANTICS[info.name] !== undefined) {
           alreadySemantic++;
+          if (alreadySemanticSample.length < 30) {
+            alreadySemanticSample.push({
+              layer: (t.node.name || "").slice(0, 24),
+              name: info.name, collection: info.collection,
+              prop: t.prop, type: t.node.type, hex: t.hex,
+            });
+          }
           continue;
         }
         primitive = normalisePrim(info.name, t.hex);
+      } else if (unresolvedVarSample.length < 30) {
+        // Bound to a variable id, but resolveVarNames couldn't resolve a
+        // name for it at all (getVariableByIdAsync returned null/threw) —
+        // a distinct failure mode from "already semantic": this falls
+        // through to the raw-hex fallback below, silently, with no name
+        // to report even if that also fails.
+        unresolvedVarSample.push({
+          layer: (t.node.name || "").slice(0, 24), prop: t.prop, type: t.node.type, hex: t.hex,
+        });
       }
     }
     if (!primitive) primitive = HEX_INDEX[t.hex] || null;
@@ -1246,6 +1264,8 @@ async function applyTo(nodes, overrides) {
     unknown: unknownList,
     tokens: tokenPalette(Object.keys(semVars).sort()),
     changes: changes,
+    alreadySemanticSample: alreadySemanticSample,
+    unresolvedVarSample: unresolvedVarSample,
   };
 }
 

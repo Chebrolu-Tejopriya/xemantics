@@ -148,6 +148,36 @@ function renderUnknown(list){
     list, 'x');
 }
 
+/**
+ * Debug view for layers that were silently skipped — either treated as
+ * "already semantic" (with the name/collection that triggered it) or bound
+ * to a variable id that couldn't be resolved to a name at all. Collapsed
+ * by default; expand to read off exactly why a specific colour didn't
+ * convert or get flagged.
+ */
+function renderDiagnostics(alreadySemanticSample, unresolvedVarSample){
+  if(!alreadySemanticSample.length && !unresolvedVarSample.length) return '';
+  var h = '<details class="sec"><summary style="cursor:pointer;font-weight:600;font-size:12px;">Diagnostics (why a colour was skipped)</summary>';
+  if(alreadySemanticSample.length){
+    h += '<p style="margin:8px 0 4px;font-size:11px;color:var(--ink2);">Treated as "already semantic" — bound name/collection matched the skip check:</p>';
+    h += '<div style="font-family:var(--mono);font-size:10px;line-height:1.6;">';
+    alreadySemanticSample.forEach(function(s){
+      h += esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — name: <b>' + esc(s.name) + '</b> — collection: <b>' + esc(s.collection || '(none)') + '</b><br>';
+    });
+    h += '</div>';
+  }
+  if(unresolvedVarSample.length){
+    h += '<p style="margin:10px 0 4px;font-size:11px;color:var(--ink2);">Bound to a variable that could not be resolved to a name at all:</p>';
+    h += '<div style="font-family:var(--mono);font-size:10px;line-height:1.6;">';
+    unresolvedVarSample.forEach(function(s){
+      h += esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — hex: <b>' + esc(s.hex) + '</b><br>';
+    });
+    h += '</div>';
+  }
+  h += '</details>';
+  return h;
+}
+
 function optionsHtml(id){
   return TOKENS.map(function(t, ti){
     return '<div class="opt" data-opt="'+id+'" data-tok="'+ti+'">' +
@@ -267,6 +297,7 @@ onmessage = function(e){
     if(m.preserved) h += '<div class="row"><span>Preserved (kept as-is)</span><b>'+m.preserved+'</b></div>';
     h += renderUnmapped(m.unmapped || []);
     h += renderUnknown(m.unknown || []);
+    h += renderDiagnostics(m.alreadySemanticSample || [], m.unresolvedVarSample || []);
     $("out").innerHTML = h; $("out").classList.add("show");
     wire(m.unmapped || [], 'u');
     wire(m.unknown || [], 'x');
