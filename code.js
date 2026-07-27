@@ -850,7 +850,14 @@ async function resolveStyleNames(ids) {
  * binding — that's what the fallback below does, once per name, caching
  * the imported Variable exactly like a local one from here on.
  */
-async function collectSemanticVars() {
+/**
+ * `seen`, if passed, gets filled with a human-readable list of whatever
+ * library variable collections the API actually returned — even when none
+ * of them match — purely so a failing caller can report something more
+ * useful than "not found". Left undefined by callers that don't need it
+ * (e.g. bindSignature).
+ */
+async function collectSemanticVars(seen) {
   const byName = {};
   const local = await figma.variables.getLocalVariablesAsync();
   const cols  = await figma.variables.getLocalVariableCollectionsAsync();
@@ -866,6 +873,11 @@ async function collectSemanticVars() {
   try {
     if (!figma.teamLibrary) return byName;
     const libCols = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+    if (seen) {
+      for (const c of libCols) {
+        seen.push((c.libraryName ? c.libraryName + " / " : "") + c.name);
+      }
+    }
     const libMatch = libCols.find(c => c.name === SEM_COLLECTION);
     if (!libMatch) return byName;
 
@@ -945,9 +957,14 @@ function rebindPaintColor(node, prop, index, variable, newOpacity) {
 }
 
 async function applyTo(nodes, overrides) {
-  const semVars = await collectSemanticVars();
+  const seenCollections = [];
+  const semVars = await collectSemanticVars(seenCollections);
   if (!Object.keys(semVars).length) {
-    throw new Error('No "' + SEM_COLLECTION + '" variables found — not locally, and not in any team library enabled for this file. In Figma, open Assets > Libraries and enable the XUI library here, then try again.');
+    const hint = seenCollections.length
+      ? " The plugin CAN see library variable collections — just none named exactly \"" + SEM_COLLECTION + "\". Found: " +
+        seenCollections.slice(0, 12).join(", ") + (seenCollections.length > 12 ? ", …" : "") + "."
+      : " No library variable collections were visible to the plugin at all — this usually means no colour VARIABLE collection is published from XUI yet (only styles, or nothing), or the library needs re-enabling.";
+    throw new Error('No "' + SEM_COLLECTION + '" variables found — not locally, and not in any team library enabled for this file.' + hint);
   }
   const HEX_INDEX = buildHexIndex();
   const GROUP_INDEX = buildGroupIndex();
