@@ -439,6 +439,15 @@ async function applyTo(nodes, overrides) {
         onStrongBackground(t.node, resolved, HEX_INDEX)) {
       forced = TEXT_ON_STRONG_BG_SEMANTIC;
     }
+    if (!forced && t.prop === "fills" &&
+        (t.node.type === "TEXT" || t.node.type === "VECTOR" || t.node.type === "BOOLEAN_OPERATION") &&
+        t.varId) {
+      const boundHere = resolved[t.varId];
+      if (boundHere && boundHere.name === CONTENT_ON_SOLID &&
+          !onStrongBackground(t.node, resolved, HEX_INDEX)) {
+        forced = WRONGLY_ON_SOLID_FALLBACK;
+      }
+    }
     if (!forced && t.varId) {
       const boundInfo = resolved[t.varId];
       if (boundInfo && NAME_ALIAS[boundInfo.name]) forced = NAME_ALIAS[boundInfo.name];

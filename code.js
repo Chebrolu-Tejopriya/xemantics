@@ -316,6 +316,27 @@ const STRONG_BG_SEMANTICS = {
 const TEXT_ON_STRONG_BG_SEMANTIC = "Content/content-absolute-white";
 
 /**
+ * The inverse case: text ALREADY bound to Content/content-on-solid, but NOT
+ * actually sitting on a strong/solid background (per STRONG_BG_SEMANTICS /
+ * STRONG_BG_PRIMITIVES above), is almost certainly wrong and needs
+ * correcting to Content/content-primary, the standard default for ordinary
+ * text.
+ *
+ * This exists specifically because "already semantic" layers are normally
+ * left alone on every subsequent run — a layer that was wrongly converted
+ * to content-on-solid BEFORE a fix existed (e.g. via the "Gray/1" ambiguity
+ * bug) stays wrong forever otherwise, since re-running the plugin never
+ * revisits an already-token-bound layer.
+ *
+ * Confirmed live: a Workspace Settings organisation-name field is bound to
+ * Content/content-on-solid (#ffffff), sitting on a plain
+ * Surface/surface-primary input field — not any branded/solid background —
+ * rendering as invisible white-on-white text.
+ */
+const CONTENT_ON_SOLID = "Content/content-on-solid";
+const WRONGLY_ON_SOLID_FALLBACK = "Content/content-primary";
+
+/**
  * Legacy/foreign variable NAMES that should be treated as directly aliasing
  * a semantic token — not primitives, so no hex or primitive lookup could
  * ever resolve them; the plugin would otherwise drop them as "not a KoinX
@@ -888,6 +909,15 @@ async function applyTo(nodes, overrides) {
         (t.node.type === "TEXT" || t.node.type === "VECTOR" || t.node.type === "BOOLEAN_OPERATION") &&
         onStrongBackground(t.node, resolved, HEX_INDEX)) {
       forced = TEXT_ON_STRONG_BG_SEMANTIC;
+    }
+    if (!forced && t.prop === "fills" &&
+        (t.node.type === "TEXT" || t.node.type === "VECTOR" || t.node.type === "BOOLEAN_OPERATION") &&
+        t.varId) {
+      const boundHere = resolved[t.varId];
+      if (boundHere && boundHere.name === CONTENT_ON_SOLID &&
+          !onStrongBackground(t.node, resolved, HEX_INDEX)) {
+        forced = WRONGLY_ON_SOLID_FALLBACK;
+      }
     }
     if (!forced && t.varId) {
       const boundInfo = resolved[t.varId];
