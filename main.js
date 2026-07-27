@@ -26,11 +26,32 @@ function walk(root, fn) {
   }
 }
 
+/** True if `name` is any known table-row name, ambiguous or not. */
+function isAnyRowName(name) {
+  return TABLE_ROW_NAMES.indexOf(name) > -1 || AMBIGUOUS_TABLE_ROW_NAMES.indexOf(name) > -1;
+}
+
 /** True if `node` has an immediate child whose name is a known table-row name. */
 function hasTableRowChild(node) {
   if (!node || !("children" in node)) return false;
-  for (const c of node.children) if (TABLE_ROW_NAMES.indexOf(c.name) > -1) return true;
+  for (const c of node.children) if (isAnyRowName(c.name)) return true;
   return false;
+}
+
+/** `node`'s siblings (including itself) that share its exact name. */
+/** True if `name` matches one of the patterns in PRESERVE_NAME_PATTERNS. */
+function isPreservedName(name) {
+  if (!name) return false;
+  for (let i = 0; i < PRESERVE_NAME_PATTERNS.length; i++) {
+    if (PRESERVE_NAME_PATTERNS[i].test(name)) return true;
+  }
+  return false;
+}
+
+function siblingsWithSameName(node) {
+  const p = node.parent;
+  if (!p || !("children" in p)) return [];
+  return p.children.filter(function (c) { return c.name === node.name; });
 }
 
 /**
@@ -42,8 +63,18 @@ function hasTableRowChild(node) {
  * normal primitive rules — sweeping them into this override too was the bug
  * (it forced the header's cell text onto Surface/surface-secondary instead
  * of leaving it to resolve to Content/content-primary as it should).
+ *
+ * For AMBIGUOUS_TABLE_ROW_NAMES, header and row share one name, so identity
+ * alone can't tell them apart — resolved positionally instead: first among
+ * same-named siblings is the header, the rest are rows, and a lone match
+ * (no real header+body pairing) is left unclassified rather than guessed at.
  */
 function tableRole(node) {
+  if (AMBIGUOUS_TABLE_ROW_NAMES.indexOf(node.name) > -1) {
+    const sibs = siblingsWithSameName(node);
+    if (sibs.length < 2) return null;
+    return sibs[0] === node ? "header" : "row";
+  }
   if (TABLE_ROW_NAMES.indexOf(node.name) > -1) return "row";
   if (TABLE_HEADER_NAMES.indexOf(node.name) > -1 && hasTableRowChild(node.parent)) return "header";
   return null;
@@ -53,7 +84,7 @@ function tableRole(node) {
 function withinTableRow(node) {
   let n = node, depth = 0;
   while (n && depth < 6) {
-    if (TABLE_ROW_NAMES.indexOf(n.name) > -1) return true;
+    if (isAnyRowName(n.name)) return true;
     n = n.parent;
     depth++;
   }
@@ -79,40 +110,72 @@ function matchesRemovePattern(node, resolved) {
 }
 
 /**
- * The primitive behind `node`'s own first solid fill, or null. Synchronous —
- * relies on `resolved`/`HEX_INDEX` already being populated by scan(), since
- * walk() visits every node in the tree (not just text), so an ancestor's own
- * fill binding was already collected and resolved as a side effect.
+ * True if `node`'s own first solid fill is a "strong" brand/status
+ * background — checked BOTH as a raw primitive (Blue/09(Base) etc.) AND as
+ * an already-converted semantic token (Surface/surface-brand-primary etc.),
+ * since a background very often already IS the token by the time this runs.
+ * Synchronous — relies on `resolved`/`HEX_INDEX` already being populated by
+ * scan(), since walk() visits every node in the tree (not just text), so an
+ * ancestor's own fill binding was already collected and resolved.
  */
-function ownFillPrimitive(node, resolved, HEX_INDEX) {
-  if (!node || !("fills" in node)) return null;
+function ownFillIsStrongBg(node, resolved, HEX_INDEX) {
+  if (!node || !("fills" in node)) return false;
   const solid = firstSolid(node.fills);
-  if (!solid) return null;
+  if (!solid) return false;
   const bv = node.boundVariables && node.boundVariables.fills;
   if (bv && bv.length && bv[0].type === "VARIABLE_ALIAS") {
     const info = resolved[bv[0].id];
-    return info ? normalisePrim(info.name) : null;
+    if (!info) return false;
+    if (STRONG_BG_SEMANTICS[info.name]) return true;
+    const prim = normalisePrim(info.name);
+    return !!(prim && STRONG_BG_PRIMITIVES[prim]);
   }
-  return HEX_INDEX[hex(solid.color)] || null;
+  const prim = HEX_INDEX[hex(solid.color)];
+  return !!(prim && STRONG_BG_PRIMITIVES[prim]);
 }
 
 /**
- * True if `node` (a TEXT layer) sits directly on, or a couple of wrapper
- * frames inside, a strong brand/status background — see STRONG_BG_PRIMITIVES
- * in rules.js for why this needs to force an absolute token.
+ * True if `node` (text or an icon glyph) sits directly on, or a couple of
+ * wrapper frames inside, a strong brand/status background — see
+ * STRONG_BG_PRIMITIVES / STRONG_BG_SEMANTICS in rules.js for why this needs
+ * to force an absolute token.
  */
 function onStrongBackground(node, resolved, HEX_INDEX) {
   let n = node.parent, depth = 0;
   while (n && depth < 3) {
-    const prim = ownFillPrimitive(n, resolved, HEX_INDEX);
-    if (prim && STRONG_BG_PRIMITIVES[prim]) return true;
+    if (ownFillIsStrongBg(n, resolved, HEX_INDEX)) return true;
     n = n.parent;
     depth++;
   }
   return false;
 }
 
-/** Strip a library prefix so "Light/Gray/12" and "Gray/12" both match. */
+/**
+ * Loose spellings of every primitive: unpadded step numbers, no "-Surface"/
+ * "-Background"/"(Base)" suffix — e.g. "gray/1" -> "Gray/01-Surface",
+ * "blue/9" -> "Blue/09(Base)". Confirmed needed live: a raw "Gray/1" (not
+ * "Gray/01-Surface") shows up bound in the file and previously fell straight
+ * through to "not a KoinX colour" because the exact-string lookup below has
+ * no tolerance for it.
+ */
+const PRIM_CANON = (function () {
+  const m = {};
+  for (const n in HEX_LIGHT) {
+    m[n.toLowerCase()] = n;
+    const parts = n.split("/");
+    if (parts.length === 2) {
+      const numMatch = /^(\d+)/.exec(parts[1]);
+      if (numMatch) {
+        const unpadded = parts[0] + "/" + parseInt(numMatch[1], 10);
+        m[unpadded.toLowerCase()] = n;
+      }
+    }
+  }
+  return m;
+})();
+
+/** Strip a library prefix so "Light/Gray/12" and "Gray/12" both match, and
+ *  tolerate loose forms like "Gray/1" via PRIM_CANON. */
 function normalisePrim(name) {
   if (!name) return null;
   if (HEX_LIGHT[name] !== undefined) return name;
@@ -120,8 +183,10 @@ function normalisePrim(name) {
   for (let i = 1; i < parts.length; i++) {
     const tail = parts.slice(i).join("/");
     if (HEX_LIGHT[tail] !== undefined) return tail;
+    const canon = PRIM_CANON[tail.toLowerCase()];
+    if (canon) return canon;
   }
-  return name;
+  return PRIM_CANON[name.toLowerCase()] || name;
 }
 
 function buildHexIndex() {
@@ -221,12 +286,20 @@ async function applyTo(nodes, overrides) {
     return cache[name];
   }
 
-  let applied = 0, structural = 0, removed = 0, alreadySemantic = 0, notOurColour = 0;
+  let applied = 0, structural = 0, removed = 0, alreadySemantic = 0, preserved = 0;
   const unmapped = {};
+  const unknown = {};
   const changes = [];
 
   for (let i = 0; i < raw.length; i++) {
     const t = raw[i];
+
+    // Preserved colours (e.g. SecondaryAccent) are never touched and never
+    // reported — checked first so nothing below can override it.
+    if (t.varId) {
+      const nameHere = resolved[t.varId] && resolved[t.varId].name;
+      if (isPreservedName(nameHere)) { preserved++; continue; }
+    }
 
     // Remove-fill/stroke rule: this exact broken pair, nested inside a table
     // row, gets deleted rather than recoloured — see REMOVE_IN_TABLE_ROW in
@@ -251,7 +324,8 @@ async function applyTo(nodes, overrides) {
     let forced = (role === "header" && t.prop === "fills") ? TABLE_HEADER_SEMANTIC
                : (role === "row" && t.prop === "strokes") ? TABLE_BORDER_SEMANTIC
                : null;
-    if (!forced && t.prop === "fills" && t.node.type === "TEXT" &&
+    if (!forced && t.prop === "fills" &&
+        (t.node.type === "TEXT" || t.node.type === "VECTOR" || t.node.type === "BOOLEAN_OPERATION") &&
         onStrongBackground(t.node, resolved, HEX_INDEX)) {
       forced = TEXT_ON_STRONG_BG_SEMANTIC;
     }
@@ -288,7 +362,28 @@ async function applyTo(nodes, overrides) {
     if (!primitive) primitive = HEX_INDEX[t.hex] || null;
 
     if (!primitive || HEX_LIGHT[primitive] === undefined) {
-      notOurColour++;
+      // Doesn't match any known primitive — surfaced as "Unrecognised colour"
+      // instead of silently vanishing into a counter, so it can be checked
+      // and mapped by hand rather than disappearing with no trace.
+      const label = (t.varId && resolved[t.varId] && resolved[t.varId].name) || t.hex;
+      const sig = t.prop + "|" + t.node.type + "|" + label;
+      const saved = overrides && overrides[sig];
+      if (saved && semVars[saved]) {
+        const v = await getSem(saved);
+        if (v) {
+          const paints = t.node[t.prop].map(function (p) { return Object.assign({}, p); });
+          paints[0] = figma.variables.setBoundVariableForPaint(paints[0], "color", v);
+          t.node[t.prop] = paints;
+          applied++;
+          continue;
+        }
+      }
+      const u = unknown[sig] = unknown[sig] || {
+        sig: sig, count: 0, ids: [], hex: t.hex, primitive: label,
+        prop: t.prop, type: t.node.type,
+      };
+      u.count++;
+      if (u.ids.length < 300) u.ids.push(t.node.id);
       continue;
     }
 
@@ -333,6 +428,7 @@ async function applyTo(nodes, overrides) {
     }
   }
 
+  const byCount = function (a, b) { return b.count - a.count; };
   const unmappedList = Object.keys(unmapped).map(function (sig) {
     const u = unmapped[sig];
     return {
@@ -344,15 +440,19 @@ async function applyTo(nodes, overrides) {
       count: u.count,
       ids: u.ids,
     };
-  }).sort(function (a, b) { return b.count - a.count; });
+  }).sort(byCount);
+  const unknownList = Object.keys(unknown).map(function (sig) {
+    return unknown[sig];
+  }).sort(byCount);
 
   return {
     applied: applied,
     structural: structural,
     removed: removed,
     alreadySemantic: alreadySemantic,
-    notOurColour: notOurColour,
+    preserved: preserved,
     unmapped: unmappedList,
+    unknown: unknownList,
     tokens: tokenPalette(Object.keys(semVars).sort()),
     changes: changes,
   };

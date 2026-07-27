@@ -49,6 +49,7 @@
   .menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;
         border:1px solid var(--line);border-radius:7px;box-shadow:0 6px 20px rgba(15,23,42,.14);
         z-index:20;max-height:220px;display:flex;flex-direction:column;overflow:hidden;}
+  .menu.up{top:auto;bottom:calc(100% + 4px);}
   .menu.hide{display:none;}
   .menu input{font:inherit;font-size:11px;border:none;border-bottom:1px solid var(--line);
               padding:7px 8px;outline:none;}
@@ -104,36 +105,47 @@ function swatchHtml(light, dark, extraAttrs){
          '</div>';
 }
 
-function renderUnmapped(list){
+function renderSection(title, hint, list, kind){
   if(!list.length) return '';
-  var h = '<div class="sec"><h2>Needs mapping</h2>' +
-          '<p>Click a swatch to select those layers on canvas, then choose a token.</p>';
+  var h = '<div class="sec"><h2>'+esc(title)+'</h2><p>'+esc(hint)+'</p>';
   list.forEach(function(u, i){
-    h += '<div class="card" id="card'+i+'">' +
+    var id = kind+i;
+    h += '<div class="card" id="card-'+id+'">' +
            '<div class="ch">' +
-             swatchHtml(u.hex, u.hex, 'data-i="'+i+'"') +
+             swatchHtml(u.hex, u.hex, 'data-i="'+id+'"') +
              '<div class="meta">' +
                '<div class="t">'+esc(u.primitive)+'</div>' +
                '<div class="s">'+esc(u.prop)+' · '+esc(u.type)+' · '+u.count+' layer'+(u.count>1?'s':'')+'</div>' +
              '</div>' +
-             '<button class="sm" data-sel="'+i+'">Select</button>' +
+             '<button class="sm" data-sel="'+id+'">Select</button>' +
            '</div>' +
            '<div class="ctl">' +
-             '<div class="picker" data-picker="'+i+'">' +
-               '<button type="button" class="picker-btn" data-picker-btn="'+i+'">' +
+             '<div class="picker" data-picker="'+id+'">' +
+               '<button type="button" class="picker-btn" data-picker-btn="'+id+'">' +
                  '<span class="ph">Choose a token…</span><span class="car">▾</span>' +
                '</button>' +
-               '<div class="menu hide" data-menu="'+i+'">' +
-                 '<input type="text" placeholder="Search tokens…" data-search="'+i+'">' +
-                 '<div class="opts" data-opts="'+i+'"></div>' +
+               '<div class="menu hide" data-menu="'+id+'">' +
+                 '<input type="text" placeholder="Search tokens…" data-search="'+id+'">' +
+                 '<div class="opts" data-opts="'+id+'"></div>' +
                '</div>' +
              '</div>' +
-             '<button class="sm" data-bind="'+i+'" disabled>Map</button>' +
+             '<button class="sm" data-bind="'+id+'" disabled>Map</button>' +
            '</div>' +
          '</div>';
   });
   h += '</div>';
   return h;
+}
+
+function renderUnmapped(list){
+  return renderSection('Needs mapping',
+    'Click a swatch to select those layers on canvas, then choose a token.',
+    list, 'u');
+}
+function renderUnknown(list){
+  return renderSection('Unrecognised colour',
+    "Doesn't match any KoinX primitive — confirm it's intentional (e.g. artwork), or map it if it should be a token.",
+    list, 'x');
 }
 
 function optionsHtml(id){
@@ -163,7 +175,18 @@ function wirePicker(i, onChoose){
     e.stopPropagation();
     var was = menu.classList.contains('hide');
     closeMenu();
-    if(was){ menu.classList.remove('hide'); openMenu = i; search.value=''; filterOpts(); search.focus(); }
+    if(was){
+      menu.classList.remove('hide');
+      // The plugin panel is a fixed-size window, not a scrollable page — a
+      // menu that opens downward near the bottom of the panel gets clipped
+      // by the window edge with no way to scroll to it. Flip it above the
+      // button instead whenever there isn't enough room below.
+      var r = btn.getBoundingClientRect();
+      var spaceBelow = window.innerHeight - r.bottom;
+      var needed = Math.min(220, menu.scrollHeight || 220);
+      menu.classList.toggle('up', spaceBelow < needed && r.top > spaceBelow);
+      openMenu = i; search.value=''; filterOpts(); search.focus();
+    }
   };
   function filterOpts(){
     var q = search.value.trim().toLowerCase();
@@ -190,17 +213,18 @@ function wirePicker(i, onChoose){
 
 document.addEventListener('click', closeMenu);
 
-function wire(list){
+function wire(list, kind){
   list.forEach(function(u, i){
-    var sw = document.querySelector('.sw[data-i="'+i+'"]');
-    var sel = document.querySelector('button[data-sel="'+i+'"]');
-    var bind = document.querySelector('button[data-bind="'+i+'"]');
-    var pbtn = document.querySelector('button[data-picker-btn="'+i+'"]');
+    var id = kind+i;
+    var sw = document.querySelector('.sw[data-i="'+id+'"]');
+    var sel = document.querySelector('button[data-sel="'+id+'"]');
+    var bind = document.querySelector('button[data-bind="'+id+'"]');
+    var pbtn = document.querySelector('button[data-picker-btn="'+id+'"]');
     function highlight(){ send({type:"highlight", ids:u.ids}); }
     if(sw) sw.onclick = highlight;
     if(sel) sel.onclick = highlight;
 
-    wirePicker(i, function(tokenName){
+    wirePicker(id, function(tokenName){
       bind.disabled = false;
       bind.setAttribute('data-chosen', tokenName);
     });
@@ -209,7 +233,7 @@ function wire(list){
       var tokenName = bind.getAttribute('data-chosen');
       if(!tokenName){ pbtn.click(); return; }
       send({type:"bind", sig:u.sig, token:tokenName, ids:u.ids});
-      var c = $("card"+i); if(c) c.classList.add("done");
+      var c = $("card-"+id); if(c) c.classList.add("done");
       bind.textContent = "Mapped"; bind.disabled = true;
     };
   });
@@ -240,10 +264,12 @@ onmessage = function(e){
     if(m.structural) h += '<div class="row"><span>Structural rule (table/label)</span><b>'+m.structural+'</b></div>';
     if(m.removed) h += '<div class="row"><span>Fill/stroke removed</span><b>'+m.removed+'</b></div>';
     h += '<div class="row"><span>Already semantic</span><b>'+m.alreadySemantic+'</b></div>';
-    h += '<div class="row"><span>Not a KoinX colour</span><b>'+m.notOurColour+'</b></div>';
+    if(m.preserved) h += '<div class="row"><span>Preserved (kept as-is)</span><b>'+m.preserved+'</b></div>';
     h += renderUnmapped(m.unmapped || []);
+    h += renderUnknown(m.unknown || []);
     $("out").innerHTML = h; $("out").classList.add("show");
-    wire(m.unmapped || []);
+    wire(m.unmapped || [], 'u');
+    wire(m.unknown || [], 'x');
     return;
   }
 };

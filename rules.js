@@ -240,6 +240,23 @@ const PRIM_ALIAS = {
  */
 const TABLE_HEADER_NAMES = ["Heading", "Transaction Heading"];
 const TABLE_ROW_NAMES = ["Table row", "Transaction"];
+
+/**
+ * A third table-component pattern: the Members table names its header row
+ * and its body rows identically ("Stable Table/ Row") — there's no separate
+ * header name to key on at all. Confirmed live: both the header and a data
+ * row are already bound to the semantic token Surface/surface-brand-primary
+ * (a bright blue "default/unstyled" placeholder), which is why the whole
+ * table — header bar, several row dividers, and every Role badge — renders
+ * uniformly blue instead of the header being surface-secondary and the rest
+ * resolving normally.
+ *
+ * Disambiguated by position, not name: among children sharing this exact
+ * name, the FIRST one is the header, the rest are rows — but only when
+ * there are at least two of them (a lone match is left alone rather than
+ * guessed at, since one row by itself isn't evidence of a header+body pair).
+ */
+const AMBIGUOUS_TABLE_ROW_NAMES = ["Stable Table/ Row"];
 const TABLE_HEADER_SEMANTIC = "Surface/surface-secondary";
 const TABLE_BORDER_SEMANTIC = "Border/border-secondary";
 
@@ -270,6 +287,31 @@ const STRONG_BG_PRIMITIVES = {
   "Orange/10": 1,         // surface-warning-solid
   "Green/09(Base)": 1,    // surface-success-primary
   "Green/10": 1,          // surface-success-solid
+};
+
+/**
+ * The same strong backgrounds, but by SEMANTIC token name — needed because a
+ * background is very often already converted to the token by the time this
+ * check runs (e.g. an "already semantic" layer, or one this same plugin run
+ * just fixed moments earlier). STRONG_BG_PRIMITIVES alone misses that case
+ * entirely: normalisePrim can't turn "Surface/surface-brand-primary" back
+ * into "Blue/09(Base)", so the check silently passed it through.
+ *
+ * Confirmed live on the Members table's Role badges: background genuinely
+ * bound to Surface/surface-brand-primary (already the token, not a raw
+ * primitive), label text bound to Content/content-primary (dark, near-
+ * invisible on the blue pill) and the icon glyph the same dark colour —
+ * hence checking both TEXT and icon (VECTOR/BOOLEAN_OPERATION) fills below.
+ */
+const STRONG_BG_SEMANTICS = {
+  "Surface/surface-brand-primary": 1,
+  "Surface/surface-brand-solid": 1,
+  "Surface/surface-error-primary": 1,
+  "Surface/surface-error-solid": 1,
+  "Surface/surface-warning-primary": 1,
+  "Surface/surface-warning-solid": 1,
+  "Surface/surface-success-primary": 1,
+  "Surface/surface-success-solid": 1,
 };
 const TEXT_ON_STRONG_BG_SEMANTIC = "Content/content-absolute-white";
 
@@ -318,6 +360,16 @@ const NAME_ALIAS = {
   "Label/Foreground/R": "Label/label-negative-content",
   "Light/Label/Foreground/R": "Label/label-negative-content",
 };
+
+/**
+ * Colours to leave exactly as they are — never converted, never listed under
+ * "Needs mapping" either. The SecondaryAccent ramp is a separate palette
+ * that deliberately sits outside the semantic system (per explicit request:
+ * "for SecondaryAccent colors keep it unchanged").
+ */
+const PRESERVE_NAME_PATTERNS = [
+  /SecondaryAccent/i,
+];
 
 /**
  * A wrapper whose fill is bound to Surface/surface-absolute AND whose stroke
