@@ -380,7 +380,10 @@ async function scan(nodes) {
 /**
  * Rebinds node[prop][index]'s colour to `variable`, explicitly carrying the
  * paint's opacity over rather than assuming setBoundVariableForPaint
- * preserves it untouched.
+ * preserves it untouched. Pass `newOpacity` to set a specific value instead
+ * of preserving the original (used by the OPACITY_TINT_REDIRECT rule,
+ * which resets to full opacity since the secondary token it redirects to
+ * already IS the pale colour — no transparency trick needed anymore).
  *
  * Confirmed live: a nav item's selected-state highlight was a pale tint —
  * Surface/surface-brand-primary's base colour at 10% paint opacity, giving
@@ -389,11 +392,12 @@ async function scan(nodes) {
  * shown in Figma's Fill panel at all. Setting it back explicitly closes
  * off that failure mode regardless of which layer it happens on.
  */
-function rebindPaintColor(node, prop, index, variable) {
+function rebindPaintColor(node, prop, index, variable, newOpacity) {
   const paints = node[prop].map(function (p) { return Object.assign({}, p); });
   const originalOpacity = paints[index].opacity;
   paints[index] = figma.variables.setBoundVariableForPaint(paints[index], "color", variable);
-  if (typeof originalOpacity === "number") paints[index].opacity = originalOpacity;
+  const finalOpacity = (typeof newOpacity === "number") ? newOpacity : originalOpacity;
+  if (typeof finalOpacity === "number") paints[index].opacity = finalOpacity;
   node[prop] = paints;
   return paints;
 }
@@ -530,6 +534,33 @@ async function applyTo(nodes, overrides) {
       u.count++;
       if (u.ids.length < 300) u.ids.push(t.node.id);
       continue;
+    }
+
+    // Opacity-tint redirect: a primary-tier Surface primitive at reduced
+    // paint opacity is almost always a stand-in for the proper pale
+    // secondary token — see OPACITY_TINT_REDIRECT in rules.js.
+    if (t.prop === "fills" && OPACITY_TINT_REDIRECT[primitive] &&
+        GROUP_FOR[t.prop + "|" + t.node.type] === "Surface") {
+      const solid = firstSolid(t.node[t.prop]);
+      const opacity = solid && typeof solid.opacity === "number" ? solid.opacity : 1;
+      if (opacity < TINT_OPACITY_MAX) {
+        const redirectSemantic = OPACITY_TINT_REDIRECT[primitive];
+        if (semVars[redirectSemantic]) {
+          const v = await getSem(redirectSemantic);
+          if (v) {
+            rebindPaintColor(t.node, t.prop, 0, v, 1);
+            structural++;
+            if (changes.length < 50) {
+              changes.push({
+                layer: (t.node.name || "").slice(0, 24),
+                from: primitive + " @ " + Math.round(opacity * 100) + "%",
+                to: redirectSemantic,
+              });
+            }
+            continue;
+          }
+        }
+      }
     }
 
     const sig = t.prop + "|" + t.node.type + "|" + primitive;

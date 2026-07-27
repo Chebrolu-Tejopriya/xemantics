@@ -406,6 +406,40 @@ const PRESERVE_NAME_PATTERNS = [
 const NEAREST_MATCH_MAX_DISTANCE = 20;
 
 /**
+ * A "primary"-tier Surface primitive used at reduced paint opacity is
+ * almost always a hand-rolled stand-in for the proper pale "secondary"
+ * token — every family (brand/error/warning/success) already has one
+ * defined for exactly this "light wash" look, at full opacity, with no
+ * transparency trick needed.
+ *
+ * Confirmed live: a nav item's selected-state highlight is raw #0052FE
+ * (exact Blue/09(Base), what Surface/surface-brand-primary aliases) at 10%
+ * paint opacity — a pale lavender wash. Rather than preserve that opacity
+ * on brand-primary (technically correct, but not how this design system
+ * expresses a light tint), it should redirect to
+ * Surface/surface-brand-secondary at full opacity, the token that already
+ * *is* that pale colour.
+ *
+ * Scoped to the "-primary" tier only, not "-solid" — a solid token is
+ * typically a hover/pressed full-opacity state, not a tint base, so
+ * reduced opacity on it doesn't imply the same "meant to be pale" pattern.
+ */
+const OPACITY_TINT_REDIRECT = {
+  "Blue/09(Base)": "Surface/surface-brand-secondary",
+  "Red/09(Base)": "Surface/surface-error-secondary",
+  "Orange/09(Base)": "Surface/surface-warning-secondary",
+  "Green/09(Base)": "Surface/surface-success-secondary",
+};
+
+/**
+ * Paint opacity below this counts as "clearly a tint/wash technique", not
+ * some other deliberate partial transparency. 30% gives comfortable margin
+ * above the confirmed 10% case while staying well under 50%, where a
+ * different intent (e.g. a scrim/overlay) becomes more plausible.
+ */
+const TINT_OPACITY_MAX = 0.3;
+
+/**
  * A wrapper whose fill is bound to Surface/surface-absolute AND whose stroke
  * is bound to one of these Border tokens, nested inside a table row, should
  * have both removed entirely rather than recoloured.
