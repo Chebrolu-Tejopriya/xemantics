@@ -149,7 +149,7 @@ function ownFillIsStrongBg(node, resolved, HEX_INDEX) {
   const name = boundNameFor(node, "fills", resolved);
   if (name) {
     if (STRONG_BG_SEMANTICS[name]) return true;
-    const prim = normalisePrim(name);
+    const prim = normalisePrim(name, hex(solid.color));
     return !!(prim && STRONG_BG_PRIMITIVES[prim]);
   }
   const prim = HEX_INDEX[hex(solid.color)];
@@ -196,19 +196,46 @@ const PRIM_CANON = (function () {
   return m;
 })();
 
-/** Strip a library prefix so "Light/Gray/12" and "Gray/12" both match, and
- *  tolerate loose forms like "Gray/1" via PRIM_CANON. */
-function normalisePrim(name) {
+/**
+ * Strip a library prefix so "Light/Gray/12" and "Gray/12" both match
+ * (exact, unconditionally trusted — the prefix and suffix agree, there's no
+ * ambiguity about which primitive is meant), and tolerate loose/unpadded
+ * forms like "Gray/1" via PRIM_CANON — but when `actualHex` (the paint's
+ * real rendered colour) is known, the loose guess is only a fallback for
+ * when nothing better explains that colour.
+ *
+ * The loose guess is checked AGAINST THE WHOLE PALETTE, not validated in
+ * isolation — an earlier version of this just measured the guess's own
+ * distance to actualHex and accepted it if "close enough", but that's too
+ * permissive: Gray/01-Surface's DARK-mode hex (#171A26) is coincidentally
+ * close to Gray/12's LIGHT-mode hex (#0F172A), since both are dark navy
+ * tones in this system, so a wrong guess still passed. Comparing against
+ * the single best match across all primitives instead — via
+ * nearestPrimitive(), which already does exactly this search — catches it:
+ * confirmed live, a "Gray/1" text layer whose actual colour was #0F172A
+ * (an exact match for Gray/12) was wrongly resolving as Gray/01-Surface,
+ * producing Content/content-on-solid (near-invisible on a light
+ * background) instead of Content/content-primary.
+ */
+function normalisePrim(name, actualHex) {
   if (!name) return null;
   if (HEX_LIGHT[name] !== undefined) return name;
   const parts = name.split("/");
   for (let i = 1; i < parts.length; i++) {
     const tail = parts.slice(i).join("/");
     if (HEX_LIGHT[tail] !== undefined) return tail;
-    const canon = PRIM_CANON[tail.toLowerCase()];
-    if (canon) return canon;
   }
-  return PRIM_CANON[name.toLowerCase()] || name;
+  let loose = null;
+  for (let i = 1; i < parts.length && !loose; i++) {
+    loose = PRIM_CANON[parts.slice(i).join("/").toLowerCase()] || null;
+  }
+  if (!loose) loose = PRIM_CANON[name.toLowerCase()] || null;
+  if (!loose) return name;
+  if (actualHex) {
+    const best = nearestPrimitive(actualHex);
+    if (best) return best;   // the real colour explains itself better than the name guess
+  }
+  return loose;
 }
 
 function buildHexIndex() {
@@ -439,7 +466,7 @@ async function applyTo(nodes, overrides) {
           alreadySemantic++;
           continue;
         }
-        primitive = normalisePrim(info.name);
+        primitive = normalisePrim(info.name, t.hex);
       }
     }
     if (!primitive) primitive = HEX_INDEX[t.hex] || null;
