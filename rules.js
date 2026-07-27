@@ -516,6 +516,19 @@ const HEX_ALIAS = {
 };
 
 /**
+ * Bound-variable names that aren't a real KoinX primitive at all (not in
+ * HEX_LIGHT/HEX_DARK under any spelling) but should be treated as one.
+ * Confirmed live: "Absolute/Green-Dark" (#009B69), used for the "Incoming"
+ * value in a cash-flow widget — nearest real step is Green/10 (#00AE78),
+ * and it's used the same way Red/09(Base) is for the negative "Outgoing"
+ * value, so it should resolve the same way (Content/content-success-
+ * primary-solid via the normal Green/10 rule) rather than being left raw.
+ */
+const PRIMITIVE_NAME_ALIAS = {
+  "Absolute/Green-Dark": "Green/10",
+};
+
+/**
  * Fallback when no exact rule exists: which token group does this context
  * belong to? Derived from the reference screens, where property + node type
  * predicted the group correctly ~95% of the time.

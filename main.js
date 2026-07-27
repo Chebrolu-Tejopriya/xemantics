@@ -284,6 +284,7 @@ function stripLightPrefix(name) {
 
 function normalisePrim(name, actualHex) {
   if (!name) return null;
+  if (PRIMITIVE_NAME_ALIAS[name] !== undefined) return PRIMITIVE_NAME_ALIAS[name];
   if (HEX_LIGHT[name] !== undefined) return name;
   const parts = name.split("/");
   for (let i = 1; i < parts.length; i++) {
@@ -566,15 +567,21 @@ async function primitiveForPaint(solid, node, prop, resolved, HEX_INDEX) {
  * "$35,490" value in another — each gets its own correct token instead of
  * requiring the whole layer to be left for manual review.
  *
- * Still bails out entirely (returns null, leaves the layer in "Mixed-fill
- * layers" for manual review) if ANY segment can't be resolved at all —
- * never guesses at an unrecognised colour, never partially applies.
+ * Each segment is resolved and applied independently — if one segment's
+ * colour genuinely isn't recognisable, it's left untouched and the layer
+ * is flagged (with partial: true) for manual review, but that no longer
+ * blocks its siblings from being fixed. Confirmed live: "Incoming: $75,490"
+ * stayed entirely raw — even its perfectly-resolvable "Incoming:" label —
+ * because the green value was bound to "Absolute/Green-Dark", which isn't
+ * a defined primitive; the all-or-nothing bail meant the whole layer was
+ * skipped instead of just the one bad segment.
  *
- * Confirmed live twice: a "Total" text layer had two segments bound to two
- * different variables ("Gray/09" and "Light/Gray/09") resolving to the
- * identical token (Content/content-tertiary) — a harmless authoring
- * inconsistency, safe to flatten. An "Opening Balance: $35,490" layer has
- * a genuinely two-tone label/value pair that need two different tokens.
+ * Confirmed live twice before that: a "Total" text layer had two segments
+ * bound to two different variables ("Gray/09" and "Light/Gray/09")
+ * resolving to the identical token (Content/content-tertiary) — a harmless
+ * authoring inconsistency, safe to flatten. An "Opening Balance: $35,490"
+ * layer has a genuinely two-tone label/value pair that need two different
+ * tokens.
  */
 async function resolveMixedTextFill(node, prop, resolved, HEX_INDEX, GROUP_INDEX, overrides, semVars, getSem) {
   if (prop !== "fills" || node.type !== "TEXT" || typeof node.getStyledTextSegments !== "function") return null;
