@@ -48,6 +48,26 @@ function isPreservedName(name) {
   return false;
 }
 
+/**
+ * True if `node` itself, or any ancestor, is a component/frame whose name
+ * marks it as protected artwork (crypto logo, exchange/wallet logo, flag)
+ * — see PRESERVE_ARTWORK_NAME_PATTERNS in rules.js. Bounded ancestor walk,
+ * same shape as withinTableRow/onStrongBackground.
+ */
+function isWithinPreservedArtwork(node) {
+  let n = node, depth = 0;
+  while (n && depth < 8) {
+    if (n.name) {
+      for (let i = 0; i < PRESERVE_ARTWORK_NAME_PATTERNS.length; i++) {
+        if (PRESERVE_ARTWORK_NAME_PATTERNS[i].test(n.name)) return true;
+      }
+    }
+    n = n.parent;
+    depth++;
+  }
+  return false;
+}
+
 function siblingsWithSameName(node) {
   const p = node.parent;
   if (!p || !("children" in p)) return [];
@@ -489,6 +509,12 @@ async function applyTo(nodes, overrides) {
       const nameHere = resolved[t.varId] && resolved[t.varId].name;
       if (isPreservedName(nameHere)) { preserved++; continue; }
     }
+
+    // Protected artwork (crypto logos, exchange/wallet logos, flags) —
+    // checked structurally, not by bound variable name, since this kind of
+    // artwork is almost always raw unbound colour with nothing else to
+    // match on. See PRESERVE_ARTWORK_NAME_PATTERNS in rules.js.
+    if (isWithinPreservedArtwork(t.node)) { preserved++; continue; }
 
     // Remove-fill/stroke rule: this exact broken pair, nested inside a table
     // row, gets deleted rather than recoloured — see REMOVE_IN_TABLE_ROW in

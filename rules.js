@@ -403,6 +403,28 @@ const PRESERVE_NAME_PATTERNS = [
 ];
 
 /**
+ * Component/layer names that mark a subtree as protected artwork — crypto
+ * currency logos, exchange/wallet logos, and country flags carry their own
+ * fixed brand colours and must never be recoloured to a semantic token,
+ * per direct request ("they must stay however they are").
+ *
+ * Unlike PRESERVE_NAME_PATTERNS (which matches a bound VARIABLE's name),
+ * this matches the LAYER/component NAME and is checked structurally — walk
+ * up the ancestor chain, not just the node itself — because this kind of
+ * artwork is almost always raw, unbound multi-colour paths with nothing to
+ * match by variable name at all. "Crypto Logos" and "Exchanges&Wallets" are
+ * confirmed live component instance names (seen wrapping BTC/ETH icons and
+ * exchange logos like Binance/Coinbase in the Transactions table). "Flags"
+ * is included per the same request but not independently confirmed live —
+ * worth flagging if it turns out to miss real instances or over-match.
+ */
+const PRESERVE_ARTWORK_NAME_PATTERNS = [
+  /Crypto\s*Logos?/i,
+  /Exchanges?\s*&?\s*Wallets?/i,
+  /\bFlags?\b/i,
+];
+
+/**
  * How close a raw, unbound hex has to be to a known primitive (Euclidean
  * RGB distance, 0-441 max) before it's treated as a near-duplicate of that
  * primitive rather than a genuinely unknown colour.
