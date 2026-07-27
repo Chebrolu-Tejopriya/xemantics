@@ -586,12 +586,22 @@ async function resolveMixedTextFill(node, prop, resolved, HEX_INDEX, GROUP_INDEX
   }
   if (!segments || segments.length < 2) return null;
 
+  // Resolve every segment independently. A segment that can't be resolved
+  // (e.g. bound to a colour that isn't a recognised primitive at all, like
+  // "Absolute/Green-Dark") must NOT block its siblings on the same text node
+  // from being converted — confirmed live: "Incoming: $75,490" stayed
+  // completely untouched (even its perfectly-resolvable "Incoming:" label)
+  // because the green value segment's primitive wasn't recognised, while
+  // "Outgoing: $40,490" — where both segments happened to resolve — worked
+  // fine. Apply what CAN be applied; leave only the genuinely-unresolvable
+  // segment(s) untouched and flag the layer for manual review.
   const resolvedSegments = [];
+  let anyUnresolved = false;
   for (const seg of segments) {
     const paints = seg.fills;
-    if (!Array.isArray(paints) || !paints.length) return null;
+    if (!Array.isArray(paints) || !paints.length) { anyUnresolved = true; continue; }
     const solid = firstSolid(paints);
-    if (!solid) return null;
+    if (!solid) { anyUnresolved = true; continue; }
 
     const resolvedPrim = await primitiveForPaint(solid, node, prop, resolved, HEX_INDEX);
     let semantic;
@@ -599,10 +609,10 @@ async function resolveMixedTextFill(node, prop, resolved, HEX_INDEX, GROUP_INDEX
       semantic = resolvedPrim.alreadySemantic;
     } else {
       const primitive = resolvedPrim.primitive;
-      if (!primitive || HEX_LIGHT[primitive] === undefined) return null;
+      if (!primitive || HEX_LIGHT[primitive] === undefined) { anyUnresolved = true; continue; }
       semantic = resolveSemanticForPrimitive(prop, node.type, primitive, overrides, GROUP_INDEX);
     }
-    if (!semantic || !semVars[semantic]) return null;
+    if (!semantic || !semVars[semantic]) { anyUnresolved = true; continue; }
     resolvedSegments.push({ start: seg.start, end: seg.end, fontName: seg.fontName, basePaint: solid, semantic: semantic });
   }
   if (!resolvedSegments.length) return null;
@@ -614,14 +624,17 @@ async function resolveMixedTextFill(node, prop, resolved, HEX_INDEX, GROUP_INDEX
       if (!fontsLoaded[key]) { await figma.loadFontAsync(rs.fontName); fontsLoaded[key] = true; }
     }
     const distinctTokens = {};
+    const applied = [];
     for (const rs of resolvedSegments) {
       const v = await getSem(rs.semantic);
-      if (!v) return null;
+      if (!v) { anyUnresolved = true; continue; }
       const newPaint = figma.variables.setBoundVariableForPaint(Object.assign({}, rs.basePaint), "color", v);
       node.setRangeFills(rs.start, rs.end, [newPaint]);
       distinctTokens[rs.semantic] = 1;
+      applied.push(rs);
     }
-    return { tokens: Object.keys(distinctTokens), segments: resolvedSegments.length };
+    if (!applied.length) return null;
+    return { tokens: Object.keys(distinctTokens), segments: applied.length, partial: anyUnresolved };
   } catch (e) {
     return null;
   }
@@ -692,9 +705,16 @@ async function applyTo(nodes, overrides) {
       if (changes.length < 50) {
         changes.push({
           layer: (m.node.name || "").slice(0, 24),
-          from: "(mixed fill, " + result.segments + " segment" + (result.segments > 1 ? "s" : "") + ")",
+          from: "(mixed fill, " + result.segments + " segment" + (result.segments > 1 ? "s" : "") + (result.partial ? ", 1+ unresolved" : "") + ")",
           to: result.tokens.join(" + "),
         });
+      }
+      // A layer can be partially resolved: some segments got their token
+      // applied, but at least one segment's colour wasn't a recognised
+      // primitive at all and was left untouched — still worth flagging so
+      // it isn't mistaken for fully done.
+      if (result.partial) {
+        mixedList.push({ layer: (m.node.name || "").slice(0, 40), prop: m.prop, type: m.node.type, id: m.node.id, partial: true });
       }
       continue;
     }

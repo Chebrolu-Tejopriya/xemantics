@@ -281,12 +281,12 @@ function wire(list, kind){
 function renderMixedFills(list){
   if(!list.length) return '';
   var h = '<div class="sec"><h2>Mixed-fill layers</h2>' +
-          '<p>Multiple colours on this layer, and at least one of them isn\'t a recognised KoinX colour — each colour segment normally resolves independently, but this one needs a human look. Click Select to find and fix it in Figma.</p>';
+          '<p>Multiple colours on this layer, and at least one of them isn\'t a recognised KoinX colour — each colour segment resolves independently, so any resolvable segments here are already fixed. What\'s left needs a human look. Click Select to find and fix it in Figma.</p>';
   list.forEach(function(u, i){
     h += '<div class="card">' +
            '<div class="ch">' +
              '<div class="meta">' +
-               '<div class="t">'+esc(u.layer)+'</div>' +
+               '<div class="t">'+esc(u.layer)+(u.partial ? ' <span class="s">(partially fixed)</span>' : '')+'</div>' +
                '<div class="s">'+esc(u.prop)+' · '+esc(u.type)+'</div>' +
              '</div>' +
              '<button class="sm" data-mixed-sel="'+i+'">Select</button>' +
