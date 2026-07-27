@@ -29,8 +29,9 @@
   .sec{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;}
   .sec h2{font-size:12px;font-weight:600;margin:0 0 3px;}
   .sec p{font-size:11px;color:var(--ink2);margin:0 0 10px;}
-  .card{border:1px solid var(--line);border-radius:8px;padding:9px;margin-bottom:8px;}
+  .card{border:1px solid var(--line);border-radius:8px;padding:9px;margin-bottom:8px;transition:border-color .12s,background .12s;}
   .card.done{background:#F0FDF4;border-color:#BBF7D0;}
+  .card.selected{background:#EFF5FF;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
   .ch{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
   .sw{width:20px;height:20px;border-radius:4px;border:1px solid rgba(0,0,0,.12);flex:0 0 auto;}
   .meta{flex:1;min-width:0;}
@@ -40,9 +41,11 @@
   .ctl{position:relative;display:flex;gap:6px;align-items:center;}
   .picker{flex:1;min-width:0;}
   .picker-btn{width:100%;display:flex;align-items:center;gap:7px;font:inherit;font-size:11px;
-              padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:#fff;
-              color:var(--ink);cursor:pointer;text-align:left;}
-  .picker-btn:hover{border-color:#94A3B8;}
+              padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:#fff !important;
+              color:var(--ink);cursor:pointer;text-align:left;outline:none;}
+  .picker-btn:hover{border-color:#94A3B8;background:#fff !important;}
+  .picker-btn:active,.picker-btn:focus,.picker-btn:focus-visible,.picker-btn.open{
+    background:#fff !important;border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,82,254,.15);}
   .picker-btn .ph{color:var(--ink2);}
   .picker-btn .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .picker-btn .car{color:var(--ink2);font-size:9px;flex:0 0 auto;}
@@ -54,8 +57,9 @@
   .menu input{font:inherit;font-size:11px;border:none;border-bottom:1px solid var(--line);
               padding:7px 8px;outline:none;}
   .menu .opts{overflow-y:auto;}
-  .opt{display:flex;align-items:center;gap:7px;padding:6px 8px;cursor:pointer;}
+  .opt{display:flex;align-items:center;gap:7px;padding:6px 8px;cursor:pointer;background:#fff;}
   .opt:hover{background:#F8FAFC;}
+  .opt:active,.opt.active{background:#EFF5FF;}
   .opt .lbl{font-family:var(--mono);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .opt .empty{padding:10px 8px;color:var(--ink2);font-size:11px;}
   .sw.split{background:none;padding:0;overflow:hidden;display:flex;}
@@ -191,7 +195,17 @@ function closeMenu(){
   if(!openMenu) return;
   var m = document.querySelector('.menu[data-menu="'+openMenu+'"]');
   if(m) m.classList.add('hide');
+  var b = document.querySelector('button[data-picker-btn="'+openMenu+'"]');
+  if(b) b.classList.remove('open');
   openMenu = null;
+}
+
+/** Marks which card is currently selected on canvas, so a long list stays trackable. */
+var selectedCard = null;
+function markSelected(cardEl){
+  if(selectedCard) selectedCard.classList.remove('selected');
+  selectedCard = cardEl || null;
+  if(selectedCard) selectedCard.classList.add('selected');
 }
 
 function wirePicker(i, onChoose){
@@ -207,6 +221,7 @@ function wirePicker(i, onChoose){
     closeMenu();
     if(was){
       menu.classList.remove('hide');
+      btn.classList.add('open');
       // The plugin panel is a fixed-size window, not a scrollable page — a
       // menu that opens downward near the bottom of the panel gets clipped
       // by the window edge with no way to scroll to it. Flip it above the
@@ -250,7 +265,8 @@ function wire(list, kind){
     var sel = document.querySelector('button[data-sel="'+id+'"]');
     var bind = document.querySelector('button[data-bind="'+id+'"]');
     var pbtn = document.querySelector('button[data-picker-btn="'+id+'"]');
-    function highlight(){ send({type:"highlight", ids:u.ids}); }
+    var card = $("card-"+id);
+    function highlight(){ send({type:"highlight", ids:u.ids}); markSelected(card); }
     if(sw) sw.onclick = highlight;
     if(sel) sel.onclick = highlight;
 
@@ -283,7 +299,7 @@ function renderMixedFills(list){
   var h = '<div class="sec"><h2>Mixed-fill layers</h2>' +
           '<p>Multiple colours on this layer, and at least one of them isn\'t a recognised KoinX colour — each colour segment resolves independently, so any resolvable segments here are already fixed. What\'s left needs a human look. Click Select to find and fix it in Figma.</p>';
   list.forEach(function(u, i){
-    h += '<div class="card">' +
+    h += '<div class="card" id="card-mx'+i+'">' +
            '<div class="ch">' +
              '<div class="meta">' +
                '<div class="t">'+esc(u.layer)+(u.partial ? ' <span class="s">(partially fixed)</span>' : '')+'</div>' +
@@ -299,7 +315,8 @@ function renderMixedFills(list){
 function wireMixedFills(list){
   list.forEach(function(u, i){
     var sel = document.querySelector('button[data-mixed-sel="'+i+'"]');
-    if(sel) sel.onclick = function(){ send({type:"highlight", ids:[u.id]}); };
+    var card = $("card-mx"+i);
+    if(sel) sel.onclick = function(){ send({type:"highlight", ids:[u.id]}); markSelected(card); };
   });
 }
 

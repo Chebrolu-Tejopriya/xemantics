@@ -246,6 +246,31 @@ const PRIM_CANON = (function () {
 })();
 
 /**
+ * NAME_ALIAS is keyed on exact bound-variable names, but designers don't
+ * spell those consistently — confirmed live: "[Day]/Steel/01-Surface" (the
+ * key as originally entered) never matched because the real bound name is
+ * "[Day]/Steel/01 - Surface", with spaces around the dash. Normalise both
+ * sides (collapse "any spacing around a dash" to a bare dash, collapse
+ * runs of whitespace) before comparing, so spacing variants of the same
+ * name all resolve to the same alias without needing a duplicate entry
+ * per variant.
+ */
+function normAliasKey(s) {
+  return String(s).trim().replace(/\s*-\s*/g, "-").replace(/\s+/g, " ");
+}
+const NAME_ALIAS_NORM = (function () {
+  const m = {};
+  for (const k in NAME_ALIAS) m[normAliasKey(k)] = NAME_ALIAS[k];
+  return m;
+})();
+function lookupNameAlias(name) {
+  if (!name) return null;
+  if (NAME_ALIAS[name] !== undefined) return NAME_ALIAS[name];
+  const norm = NAME_ALIAS_NORM[normAliasKey(name)];
+  return norm !== undefined ? norm : null;
+}
+
+/**
  * Strip a library prefix so "Light/Gray/12" and "Gray/12" both match
  * (exact, unconditionally trusted — the prefix and suffix agree, there's no
  * ambiguity about which primitive is meant), and tolerate loose/unpadded
@@ -785,7 +810,10 @@ async function applyTo(nodes, overrides) {
     }
     if (!forced && t.varId) {
       const boundInfo = resolved[t.varId];
-      if (boundInfo && NAME_ALIAS[boundInfo.name]) forced = NAME_ALIAS[boundInfo.name];
+      if (boundInfo) {
+        const alias = lookupNameAlias(boundInfo.name);
+        if (alias) forced = alias;
+      }
     }
     if (forced && semVars[forced]) {
       const v = await getSem(forced);
