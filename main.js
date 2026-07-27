@@ -330,13 +330,51 @@ async function resolveStyleNames(ids) {
   return out;
 }
 
-/** Semantic variables available in this file. */
+/**
+ * Semantic variables available to this file — checked locally first, then
+ * in any team library enabled here.
+ *
+ * getLocalVariablesAsync() only ever returns variables OWNED by the current
+ * file. A file that merely CONSUMES the published XUI library — the more
+ * common case; most product files subscribe to a shared design system
+ * rather than duplicating it — has no local "Colors-Semantics" collection
+ * at all, so the plugin always reported "No Colors-Semantics variables in
+ * this file" there, even with the library properly linked. Library
+ * variables have to be explicitly imported by key
+ * (figma.variables.importVariableByKeyAsync) before they're usable for
+ * binding — that's what the fallback below does, once per name, caching
+ * the imported Variable exactly like a local one from here on.
+ */
 async function collectSemanticVars() {
   const byName = {};
   const local = await figma.variables.getLocalVariablesAsync();
   const cols  = await figma.variables.getLocalVariableCollectionsAsync();
   const S = cols.find(c => c.name === SEM_COLLECTION);
   if (S) for (const v of local) if (v.variableCollectionId === S.id) byName[v.name] = v;
+  if (Object.keys(byName).length) return byName;
+
+  if (!figma.teamLibrary) return byName;
+  let libCols;
+  try {
+    libCols = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+  } catch (e) {
+    return byName;
+  }
+  const libMatch = libCols.find(c => c.name === SEM_COLLECTION);
+  if (!libMatch) return byName;
+
+  let libVars;
+  try {
+    libVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libMatch.key);
+  } catch (e) {
+    return byName;
+  }
+  for (const lv of libVars) {
+    try {
+      const imported = await figma.variables.importVariableByKeyAsync(lv.key);
+      if (imported) byName[imported.name] = imported;
+    } catch (e) {}
+  }
   return byName;
 }
 
@@ -405,7 +443,7 @@ function rebindPaintColor(node, prop, index, variable, newOpacity) {
 async function applyTo(nodes, overrides) {
   const semVars = await collectSemanticVars();
   if (!Object.keys(semVars).length) {
-    throw new Error('No "' + SEM_COLLECTION + '" variables in this file. Link or publish the XUI library to it.');
+    throw new Error('No "' + SEM_COLLECTION + '" variables found — not locally, and not in any team library enabled for this file. In Figma, open Assets > Libraries and enable the XUI library here, then try again.');
   }
   const HEX_INDEX = buildHexIndex();
   const GROUP_INDEX = buildGroupIndex();
