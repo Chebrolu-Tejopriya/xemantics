@@ -237,6 +237,22 @@ const PRIM_CANON = (function () {
  * producing Content/content-on-solid (near-invisible on a light
  * background) instead of Content/content-primary.
  */
+/**
+ * Explicit "Light" prefix strip, independent of the "/"-based tail search
+ * above — per direct request, as a defensive fallback in case the raw
+ * name doesn't split cleanly on "/" the way "Light/Gray/09" does (a
+ * different separator, extra whitespace, a nested path like "Light/
+ * Colors/Gray/09" where the immediate tail isn't the primitive itself,
+ * etc). Strips ANY leading "Light" — with or without a following
+ * separator — and tries the remainder both as-is and via its own
+ * "/"-tail search.
+ */
+function stripLightPrefix(name) {
+  if (!name) return null;
+  const m = /^Light[\s/\-_]*(.+)$/i.exec(name.trim());
+  return m ? m[1].trim() : null;
+}
+
 function normalisePrim(name, actualHex) {
   if (!name) return null;
   if (HEX_LIGHT[name] !== undefined) return name;
@@ -245,11 +261,21 @@ function normalisePrim(name, actualHex) {
     const tail = parts.slice(i).join("/");
     if (HEX_LIGHT[tail] !== undefined) return tail;
   }
+  const afterLight = stripLightPrefix(name);
+  if (afterLight) {
+    if (HEX_LIGHT[afterLight] !== undefined) return afterLight;
+    const lightParts = afterLight.split("/");
+    for (let i = 0; i < lightParts.length; i++) {
+      const tail = lightParts.slice(i).join("/");
+      if (HEX_LIGHT[tail] !== undefined) return tail;
+    }
+  }
   let loose = null;
   for (let i = 1; i < parts.length && !loose; i++) {
     loose = PRIM_CANON[parts.slice(i).join("/").toLowerCase()] || null;
   }
   if (!loose) loose = PRIM_CANON[name.toLowerCase()] || null;
+  if (!loose && afterLight) loose = PRIM_CANON[afterLight.toLowerCase()] || null;
   if (!loose) return name;
   if (actualHex) {
     const best = nearestPrimitive(actualHex);
