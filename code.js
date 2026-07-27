@@ -414,6 +414,7 @@ const REMOVE_IN_TABLE_ROW = {
 const HEX_ALIAS = {
   "#EFF2F5": "Gray/02-Background",   // -> surface-primary
   "#DEDFE2": "Gray/04",              // -> border-tertiary (strokes) / surface-tertiary (fills)
+  "#D3E0E6": "Gray/04",              // same stray value confirmed live, unbound this time — see "[Day]/Gray/04" cases in the table structural rule comments
 };
 
 /**
