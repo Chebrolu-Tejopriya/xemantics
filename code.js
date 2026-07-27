@@ -526,12 +526,36 @@ function withinTableRow(node) {
   return false;
 }
 
+/**
+ * The name `node`'s own `prop` is bound to — via a Variable, or a legacy
+ * Figma Style — or null. Both binding systems are checked because they're
+ * completely separate APIs (boundVariables vs. fillStyleId/strokeStyleId);
+ * a colour applied as a Style has no boundVariables entry at all, and was
+ * previously invisible to every check here, falling through to its raw
+ * computed hex with no name — confirmed live: a stroke showing "[Day]/
+ * Gray/04" in Figma's own panel was reported by this plugin only as its hex
+ * #D3E0E6, because it's Style-bound, not Variable-bound.
+ *
+ * Style names are looked up through the same `resolved` map scan() already
+ * builds for variables, under a "style:<id>" key — see scan().
+ */
+function boundNameFor(node, prop, resolved) {
+  const bv = node.boundVariables && node.boundVariables[prop];
+  if (bv && bv.length && bv[0].type === "VARIABLE_ALIAS") {
+    const info = resolved[bv[0].id];
+    return info ? info.name : null;
+  }
+  const styleId = node[prop === "fills" ? "fillStyleId" : "strokeStyleId"];
+  if (styleId && typeof styleId === "string" && styleId.length) {
+    const info = resolved["style:" + styleId];
+    return info ? info.name : null;
+  }
+  return null;
+}
+
 /** The semantic name `node`'s own `prop` is bound to, or null. */
 function ownBoundSemanticName(node, prop, resolved) {
-  const bv = node.boundVariables && node.boundVariables[prop];
-  if (!bv || !bv.length || bv[0].type !== "VARIABLE_ALIAS") return null;
-  const info = resolved[bv[0].id];
-  return info ? info.name : null;
+  return boundNameFor(node, prop, resolved);
 }
 
 /**
@@ -557,12 +581,10 @@ function ownFillIsStrongBg(node, resolved, HEX_INDEX) {
   if (!node || !("fills" in node)) return false;
   const solid = firstSolid(node.fills);
   if (!solid) return false;
-  const bv = node.boundVariables && node.boundVariables.fills;
-  if (bv && bv.length && bv[0].type === "VARIABLE_ALIAS") {
-    const info = resolved[bv[0].id];
-    if (!info) return false;
-    if (STRONG_BG_SEMANTICS[info.name]) return true;
-    const prim = normalisePrim(info.name);
+  const name = boundNameFor(node, "fills", resolved);
+  if (name) {
+    if (STRONG_BG_SEMANTICS[name]) return true;
+    const prim = normalisePrim(name);
     return !!(prim && STRONG_BG_PRIMITIVES[prim]);
   }
   const prim = HEX_INDEX[hex(solid.color)];
@@ -669,6 +691,26 @@ async function resolveVarNames(ids) {
   return out;
 }
 
+/**
+ * Resolve every legacy Style id we saw, into the SAME shape as
+ * resolveVarNames (name + collection), so downstream code can treat a
+ * Style-bound colour exactly like a Variable-bound one via boundNameFor().
+ * Styles have no collection, so `collection` is always null — meaning a
+ * Style can never match the "already semantic" SEM_COLLECTION check, which
+ * is correct: these are the OLD system, not the semantic token library.
+ */
+async function resolveStyleNames(ids) {
+  const out = {};
+  for (const id of ids) {
+    try {
+      const s = await figma.getStyleByIdAsync(id);
+      if (!s) continue;
+      out[id] = { name: s.name, collection: null };
+    } catch (e) {}
+  }
+  return out;
+}
+
 /** Semantic variables available in this file. */
 async function collectSemanticVars() {
   const byName = {};
@@ -682,6 +724,7 @@ async function collectSemanticVars() {
 async function scan(nodes) {
   const raw = [];
   const varIds = {};
+  const styleIds = {};
   for (const root of nodes) {
     walk(root, n => {
       for (const prop of ["fills", "strokes"]) {
@@ -692,6 +735,17 @@ async function scan(nodes) {
         if (bv && bv.length && bv[0].type === "VARIABLE_ALIAS") {
           varIds[bv[0].id] = 1;
           raw.push({ node: n, prop: prop, varId: bv[0].id, hex: hex(solid.color) });
+          continue;
+        }
+        // No Variable binding — check the separate legacy Style system
+        // (fillStyleId/strokeStyleId) before giving up and treating this as
+        // an unnamed raw colour. Namespaced so it shares the `resolved` map
+        // with variable ids without ever colliding with one.
+        const styleId = n[prop === "fills" ? "fillStyleId" : "strokeStyleId"];
+        if (styleId && typeof styleId === "string" && styleId.length) {
+          const key = "style:" + styleId;
+          styleIds[styleId] = 1;
+          raw.push({ node: n, prop: prop, varId: key, hex: hex(solid.color) });
         } else {
           raw.push({ node: n, prop: prop, varId: null, hex: hex(solid.color) });
         }
@@ -699,6 +753,8 @@ async function scan(nodes) {
     });
   }
   const resolved = await resolveVarNames(Object.keys(varIds));
+  const styleNames = await resolveStyleNames(Object.keys(styleIds));
+  for (const id in styleNames) resolved["style:" + id] = styleNames[id];
   return { raw: raw, resolved: resolved };
 }
 
