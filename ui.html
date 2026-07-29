@@ -49,6 +49,8 @@
   .picker-btn .ph{color:var(--ink2);}
   .picker-btn .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .picker-btn .car{color:var(--ink2);font-size:9px;flex:0 0 auto;}
+  .picker-btn .tag{flex:0 0 auto;color:var(--accent);background:#EFF5FF;font-size:9px;
+                    font-weight:600;padding:1px 6px;border-radius:4px;}
   .menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;
         border:1px solid var(--line);border-radius:7px;box-shadow:0 6px 20px rgba(15,23,42,.14);
         z-index:20;max-height:220px;display:flex;flex-direction:column;overflow:hidden;}
@@ -126,11 +128,22 @@ function swatchHtml(light, dark, extraAttrs){
          '</div>';
 }
 
+/** Finds a TOKENS entry by name, for pre-filling a suggested swatch. */
+function tokenByName(name){
+  for(var i=0;i<TOKENS.length;i++){ if(TOKENS[i].name===name) return TOKENS[i]; }
+  return null;
+}
+
 function renderSection(title, hint, list, kind){
   if(!list.length) return '';
   var h = '<div class="sec"><h2>'+esc(title)+'</h2><p>'+esc(hint)+'</p>';
   list.forEach(function(u, i){
     var id = kind+i;
+    var sugg = u.suggested ? tokenByName(u.suggested) : null;
+    var btnInner = sugg
+      ? swatchHtml(sugg.light, sugg.dark) + '<span class="lbl">'+esc(sugg.name)+'</span>' +
+        '<span class="tag">Suggested</span><span class="car">▾</span>'
+      : '<span class="ph">Choose a token…</span><span class="car">▾</span>';
     h += '<div class="card" id="card-'+id+'">' +
            '<div class="ch">' +
              swatchHtml(u.hex, u.hex, 'data-i="'+id+'"') +
@@ -142,15 +155,15 @@ function renderSection(title, hint, list, kind){
            '</div>' +
            '<div class="ctl">' +
              '<div class="picker" data-picker="'+id+'">' +
-               '<button type="button" class="picker-btn" data-picker-btn="'+id+'">' +
-                 '<span class="ph">Choose a token…</span><span class="car">▾</span>' +
+               '<button type="button" class="picker-btn" data-picker-btn="'+id+'"'+(sugg?' data-value="'+esc(sugg.name)+'"':'')+'>' +
+                 btnInner +
                '</button>' +
                '<div class="menu hide" data-menu="'+id+'">' +
                  '<input type="text" placeholder="Search tokens…" data-search="'+id+'">' +
                  '<div class="opts" data-opts="'+id+'"></div>' +
                '</div>' +
              '</div>' +
-             '<button class="sm" data-bind="'+id+'" disabled>Map</button>' +
+             '<button class="sm" data-bind="'+id+'"'+(sugg?' data-chosen="'+esc(sugg.name)+'"':' disabled')+'>Map</button>' +
            '</div>' +
          '</div>';
   });

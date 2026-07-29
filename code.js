@@ -948,6 +948,33 @@ function nearestPrimitive(hexColor) {
   }
   return bestDist <= NEAREST_MATCH_MAX_DISTANCE ? best : null;
 }
+
+/**
+ * Best-guess semantic token for a colour that couldn't be resolved any
+ * other way — scoped to the SAME token group the layer's context already
+ * calls for (Surface stays Surface, Content stays Content, Border stays
+ * Border; never cross-group, per explicit request). Only considers tokens
+ * actually present in semVars (real variables in this file/library, not
+ * just names known to the rule tables), and only within
+ * NEAREST_MATCH_MAX_DISTANCE — same cutoff as nearestPrimitive(), so a
+ * colour that isn't genuinely close to anything gets no suggestion at all
+ * rather than a confident-looking wrong one. This is a SUGGESTION only:
+ * callers pre-fill the token picker with it, but nothing is bound until
+ * the user clicks Map — never auto-applied.
+ */
+function nearestSemanticInGroup(hexColor, group, semVars) {
+  if (!group) return null;
+  let best = null, bestDist = Infinity;
+  for (const name in semVars) {
+    if (name.split("/")[0] !== group) continue;
+    const prim = SEMANTICS[name];
+    if (!prim) continue;
+    const lHex = HEX_LIGHT[prim], dHex = HEX_DARK[prim];
+    if (lHex) { const d = hexDistance(hexColor, lHex); if (d < bestDist) { bestDist = d; best = name; } }
+    if (dHex) { const d = hexDistance(hexColor, dHex); if (d < bestDist) { bestDist = d; best = name; } }
+  }
+  return bestDist <= NEAREST_MATCH_MAX_DISTANCE ? best : null;
+}
 function buildGroupIndex() {
   const g = {};
   for (const sem in SEMANTICS) {
@@ -1459,6 +1486,7 @@ async function applyTo(nodes, overrides) {
       const u = unknown[sig] = unknown[sig] || {
         sig: sig, count: 0, ids: [], hex: t.hex, primitive: label,
         prop: t.prop, type: t.node.type,
+        suggested: nearestSemanticInGroup(t.hex, GROUP_FOR[t.prop + "|" + t.node.type], semVars),
       };
       u.count++;
       if (u.ids.length < 300) u.ids.push(t.node.id);
@@ -1499,6 +1527,7 @@ async function applyTo(nodes, overrides) {
       const u = unmapped[sig] = unmapped[sig] || {
         count: 0, ids: [], hex: t.hex, primitive: primitive,
         prop: t.prop, type: t.node.type,
+        suggested: nearestSemanticInGroup(t.hex, GROUP_FOR[t.prop + "|" + t.node.type], semVars),
       };
       u.count++;
       if (u.ids.length < 300) u.ids.push(t.node.id);
@@ -1525,6 +1554,7 @@ async function applyTo(nodes, overrides) {
       hex: u.hex,
       count: u.count,
       ids: u.ids,
+      suggested: u.suggested,
     };
   }).sort(byCount);
   const unknownList = Object.keys(unknown).map(function (sig) {
