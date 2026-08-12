@@ -158,6 +158,8 @@
   .diag-log b{font-weight:600;}
   .diag-row{margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line-soft);}
   .diag-row:last-child{margin-bottom:0;padding-bottom:0;border-bottom:none;}
+  .diag-row-flex{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .diag-row-flex > button{flex:0 0 auto;}
   .diag-line{margin:2px 0;}
   .diag-line-dim{color:var(--ink-3);}
 
@@ -425,9 +427,11 @@ function diagnosticsInnerHtml(alreadySemanticSample, unresolvedVarSample, strong
   }
   if(unresolvedVarSample.length){
     h += '<div class="diag-block"><p>Linked to a colour that couldn\'t be read — worth checking by hand:</p><div class="diag-log">';
-    unresolvedVarSample.forEach(function(s){
-      h += '<div class="diag-row" data-layer="'+esc((s.layer||'').toLowerCase())+'">' +
-        '<b>'+esc(s.layer)+'</b> ('+esc((s.type||'').toLowerCase())+', colour '+esc(s.hex)+') is linked to a variable that couldn\'t be read.</div>';
+    unresolvedVarSample.forEach(function(s, i){
+      h += '<div class="diag-row diag-row-flex" data-layer="'+esc((s.layer||'').toLowerCase())+'">' +
+        '<span><b>'+esc(s.layer)+'</b> ('+esc((s.type||'').toLowerCase())+', colour '+esc(s.hex)+') is linked to a variable that couldn\'t be read.</span>' +
+        (s.id ? '<button class="btn-ghost" data-unres-sel="'+i+'">Select</button>' : '') +
+      '</div>';
     });
     h += '</div></div>';
   }
@@ -460,6 +464,13 @@ function wireDiagFilter(){
     });
     fitWindow();
   };
+}
+function wireUnresolvedSelect(unresolvedVarSample){
+  unresolvedVarSample.forEach(function(s, i){
+    if(!s.id) return;
+    var btn = document.querySelector('button[data-unres-sel="'+i+'"]');
+    if(btn) btn.onclick = function(){ send({type:"highlight", ids:[s.id]}); };
+  });
 }
 
 function closeMenu(){
@@ -600,7 +611,7 @@ onmessage = function(e){
       wireMixedCards(hiddenMixedFills, 'hmx');
       wireAccordion('hidden');
     }
-    if(diagInner){ wireAccordion('diag'); wireDiagFilter(); }
+    if(diagInner){ wireAccordion('diag'); wireDiagFilter(); wireUnresolvedSelect(m.unresolvedVarSample || []); }
 
     fitWindow();
     return;

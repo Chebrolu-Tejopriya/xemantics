@@ -1076,7 +1076,7 @@ async function applyTo(nodes, overrides) {
         // through to the raw-hex fallback below, silently, with no name
         // to report even if that also fails.
         unresolvedVarSample.push({
-          layer: (t.node.name || "").slice(0, 24), prop: t.prop, type: t.node.type, hex: t.hex,
+          layer: (t.node.name || "").slice(0, 24), prop: t.prop, type: t.node.type, hex: t.hex, id: t.node.id,
         });
       }
     }
