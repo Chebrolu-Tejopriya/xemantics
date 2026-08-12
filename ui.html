@@ -146,17 +146,20 @@
   .accordion-body-in{padding-top:9px;}
 
   /* ---- diagnostics ---- */
+  .diag-intro{font-size:10.5px;color:var(--ink-2);margin:0 0 9px;line-height:1.5;}
   .diag-filter{width:100%;font:inherit;font-size:11px;padding:7px 9px;border-radius:var(--r-sm);
     border:1px solid var(--line);background:var(--surface-2);outline:none;margin-bottom:10px;}
   .diag-filter:focus{border-color:var(--accent);background:#fff;}
   .diag-block{margin-bottom:10px;}
   .diag-block:last-child{margin-bottom:0;}
-  .diag-block > p{font-size:10.5px;color:var(--ink-3);margin:0 0 5px;}
-  .diag-log{font-family:var(--mono);font-size:9.5px;line-height:1.7;color:var(--ink-2);
-    background:var(--surface-2);border-radius:var(--r-sm);padding:8px;max-height:160px;overflow-y:auto;}
-  .diag-log b{color:var(--ink);}
-  .diag-row{margin-bottom:5px;}
-  .diag-row:last-child{margin-bottom:0;}
+  .diag-block > p{font-size:10.5px;font-weight:600;color:var(--ink-2);margin:0 0 5px;}
+  .diag-log{font-size:11px;line-height:1.6;color:var(--ink);
+    background:var(--surface-2);border-radius:var(--r-sm);padding:9px;max-height:200px;overflow-y:auto;}
+  .diag-log b{font-weight:600;}
+  .diag-row{margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line-soft);}
+  .diag-row:last-child{margin-bottom:0;padding-bottom:0;border-bottom:none;}
+  .diag-line{margin:2px 0;}
+  .diag-line-dim{color:var(--ink-3);}
 
   /* ---- footer ---- */
   .app-foot{margin-top:16px;padding-top:12px;border-top:1px solid var(--line-soft);text-align:center;}
@@ -379,49 +382,61 @@ function wireAccordion(key){
   };
 }
 
+/** Plain-English translation of one ancestor the strong-background check looked at. */
+function traceLineHtml(t){
+  if(t.stopped){
+    return '<div class="diag-line diag-line-dim">No background found nearby — left as its normal colour.</div>';
+  }
+  if(!t.hasFill){
+    return '<div class="diag-line diag-line-dim">· <b>'+esc(t.name)+'</b> has no background of its own — kept looking further up.</div>';
+  }
+  if(!t.countedAsFill){
+    var pct = Math.round((t.paintOpacity==null?1:t.paintOpacity) * t.nodeOpacity * 100);
+    return '<div class="diag-line diag-line-dim">· <b>'+esc(t.name)+'</b> has a background colour, but it\'s invisible (about '+pct+'% opacity) — kept looking further up.</div>';
+  }
+  if(t.strong){
+    return '<div class="diag-line"><b>'+esc(t.name)+'</b>\'s background is '+esc(t.hex)+' — dark, so this should have switched to a light colour here.</div>';
+  }
+  return '<div class="diag-line">· <b>'+esc(t.name)+'</b>\'s background is '+esc(t.hex)+' — not dark, so this was correctly left as its normal colour.</div>';
+}
+
 /**
- * Debug view for layers that were silently skipped — either treated as
- * "already semantic", bound to an unresolvable variable, or dark content
- * that didn't get forced to a light colour. Collapsed by default.
+ * Plain-English explanations for layers that didn't change — either
+ * already using a proper token, linked to a colour that couldn't be
+ * read, or dark text/icons that stayed dark and exactly why. Collapsed
+ * by default; this is troubleshooting info, not something you need to
+ * read on a normal run.
  */
 function diagnosticsInnerHtml(alreadySemanticSample, unresolvedVarSample, strongBgSample){
   var any = alreadySemanticSample.length || unresolvedVarSample.length || (strongBgSample && strongBgSample.length);
   if(!any) return '';
 
-  // A run over a big file can produce dozens of entries across three
-  // logs — confirmed live: finding one specific layer meant scrolling
-  // and screenshotting the whole thing by hand. One filter narrows all
-  // three logs at once by layer name.
-  var h = '<input type="text" class="diag-filter" id="diagFilter" placeholder="Filter by layer name…">';
+  var h = '<p class="diag-intro">If a colour didn\'t convert the way you expected, this explains why. A run over a big file can list a lot — search by layer name to jump straight to one.</p>';
+  h += '<input type="text" class="diag-filter" id="diagFilter" placeholder="Filter by layer name…">';
   h += '<div id="diagBlocks">';
 
   if(alreadySemanticSample.length){
-    h += '<div class="diag-block"><p>Treated as "already semantic" — bound name/collection matched the skip check:</p><div class="diag-log">';
+    h += '<div class="diag-block"><p>Already using a proper token — nothing to change:</p><div class="diag-log">';
     alreadySemanticSample.forEach(function(s){
       h += '<div class="diag-row" data-layer="'+esc((s.layer||'').toLowerCase())+'">' +
-        esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — name: <b>' + esc(s.name) + '</b> — collection: <b>' + esc(s.collection || '(none)') + '</b></div>';
+        '<b>'+esc(s.layer)+'</b> ('+esc((s.type||'').toLowerCase())+') is already using <b>'+esc(s.name)+'</b>.</div>';
     });
     h += '</div></div>';
   }
   if(unresolvedVarSample.length){
-    h += '<div class="diag-block"><p>Bound to a variable that could not be resolved to a name at all:</p><div class="diag-log">';
+    h += '<div class="diag-block"><p>Linked to a colour that couldn\'t be read — worth checking by hand:</p><div class="diag-log">';
     unresolvedVarSample.forEach(function(s){
       h += '<div class="diag-row" data-layer="'+esc((s.layer||'').toLowerCase())+'">' +
-        esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — hex: <b>' + esc(s.hex) + '</b></div>';
+        '<b>'+esc(s.layer)+'</b> ('+esc((s.type||'').toLowerCase())+', colour '+esc(s.hex)+') is linked to a variable that couldn\'t be read.</div>';
     });
     h += '</div></div>';
   }
   if(strongBgSample && strongBgSample.length){
-    h += '<div class="diag-block"><p>Dark content that did NOT get forced to a light colour — what the ancestor walk saw, level by level:</p><div class="diag-log">';
+    h += '<div class="diag-block"><p>Dark text/icons that stayed dark — here\'s what nearby backgrounds looked like:</p><div class="diag-log">';
     strongBgSample.forEach(function(s){
-      h += '<div class="diag-row" data-layer="'+esc((s.layer||'').toLowerCase())+'"><b>' + esc(s.layer) + '</b> — ' + esc(s.prop) + '·' + esc(s.type) + ' — own hex: ' + esc(s.hex) + '<br>';
-      s.trace.forEach(function(t){
-        if(t.stopped){ h += '&nbsp;&nbsp;' + esc(t.stopped) + '<br>'; return; }
-        h += '&nbsp;&nbsp;[' + t.depth + '] ' + esc(t.name) + ' (' + esc(t.type) + ') — hasFill:' + t.hasFill +
-             ' paintOp:' + (t.paintOpacity===null?'-':t.paintOpacity) + ' nodeOp:' + t.nodeOpacity +
-             ' hex:' + esc(t.hex||'-') + ' countedAsFill:' + t.countedAsFill +
-             (t.countedAsFill ? ' strong:' + t.strong + ' <b>(stopped here)</b>' : '') + '<br>';
-      });
+      h += '<div class="diag-row" data-layer="'+esc((s.layer||'').toLowerCase())+'">' +
+        '<div class="diag-line"><b>'+esc(s.layer)+'</b> ('+esc((s.type||'').toLowerCase())+', colour '+esc(s.hex)+')</div>';
+      s.trace.forEach(function(t){ h += traceLineHtml(t); });
       h += '</div>';
     });
     h += '</div></div>';
@@ -574,7 +589,7 @@ onmessage = function(e){
     }
 
     var diagInner = diagnosticsInnerHtml(m.alreadySemanticSample || [], m.unresolvedVarSample || [], m.strongBgSample || []);
-    if(diagInner) h += accordionHtml('diag', 'Diagnostics', null, diagInner);
+    if(diagInner) h += accordionHtml('diag', 'Why wasn\'t something converted?', null, diagInner);
 
     $("out").innerHTML = h; $("out").classList.add("show");
 
