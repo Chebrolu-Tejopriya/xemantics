@@ -57,6 +57,7 @@ const SEMANTICS = {
   "Border/border-brand": "Blue/09(Base)",
   "Border/border-error": "Red/09(Base)",
   "Border/border-warning": "Orange/09(Base)",
+  "Border/border-success": "Green/09(Base)",   // same "(Base) step" pattern as brand/error/warning above
 
   "Label/label-positive-bg": "Label/positive-bg",
   "Label/label-positive-content": "Label/positive-content",
@@ -143,6 +144,7 @@ const RULES = {
   "strokes|FRAME|Gray/07": "Border/border-primary",
   "strokes|FRAME|Blue/09(Base)": "Border/border-brand",
   "strokes|FRAME|Orange/09(Base)": "Border/border-warning",
+  "strokes|FRAME|Green/09(Base)": "Border/border-success",   // confirmed live: exactly this context (strokes · FRAME)
   "strokes|INSTANCE|Gray/01-Surface": "Border/border-pure",
   "strokes|INSTANCE|Gray/04": "Border/border-tertiary",
   "strokes|INSTANCE|Gray/05": "Border/border-secondary",
@@ -150,6 +152,7 @@ const RULES = {
   "strokes|INSTANCE|Blue/09(Base)": "Border/border-brand",
   "strokes|INSTANCE|Red/09(Base)": "Border/border-error",
   "strokes|INSTANCE|Orange/09(Base)": "Border/border-warning",
+  "strokes|INSTANCE|Green/09(Base)": "Border/border-success",
   "strokes|RECTANGLE|Gray/07": "Border/border-primary",
   "strokes|LINE|Gray/05": "Border/border-secondary",
   "strokes|LINE|Gray/07": "Border/border-primary",
