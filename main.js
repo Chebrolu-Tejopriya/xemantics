@@ -247,23 +247,29 @@ function isVeryDark(hexColor) {
  */
 /**
  * True only if `node`'s own fill is not just present but actually shows up
- * on screen — `firstSolid()` alone only checks `visible !== false`, not
- * opacity, so a fill that's technically there but at (near) zero opacity
- * still passed. Confirmed live: an icon's immediate parent frame had its
- * OWN fill bound to a real colour ("pure white"), but rendered nothing
- * visible in the actual screenshot — almost certainly a default-off
- * hover-state highlight — so the walk stopped right there and never
- * reached the real dark page background several levels further up. Any
- * legitimate low-opacity TINT (handled separately by
- * OPACITY_TINT_REDIRECT) still has meaningfully non-zero opacity, so this
- * cutoff is set well below that, not to be confused with it.
+ * on screen. Two SEPARATE opacity values compound here, and both have to
+ * be checked: the fill PAINT's own opacity (solid.opacity), and the
+ * NODE's overall layer opacity (node.opacity — the "Appearance > Opacity"
+ * slider in Figma's UI, entirely independent of the paint's own opacity).
+ * `firstSolid()` only checks `visible !== false`, neither of these.
+ * Confirmed live: an icon's immediate parent frame had its own fill bound
+ * to a real colour ("pure white") at full PAINT opacity, but the FRAME
+ * itself was set to 0% layer opacity — a default-off hover-state
+ * highlight — so it rendered nothing visible, yet the first version of
+ * this check (which only looked at solid.opacity) still treated it as a
+ * real background and stopped the walk right there, never reaching the
+ * actual dark page background several levels further up. Any legitimate
+ * low-opacity TINT (handled separately by OPACITY_TINT_REDIRECT) still
+ * has meaningfully non-zero opacity on both fronts, so this cutoff is set
+ * well below that, not to be confused with it.
  */
 function hasOwnVisibleFill(node) {
   if (!node || !("fills" in node)) return false;
   const solid = firstSolid(node.fills);
   if (!solid) return false;
-  const opacity = typeof solid.opacity === "number" ? solid.opacity : 1;
-  return opacity > MIN_MEANINGFUL_FILL_OPACITY;
+  const paintOpacity = typeof solid.opacity === "number" ? solid.opacity : 1;
+  const nodeOpacity = typeof node.opacity === "number" ? node.opacity : 1;
+  return (paintOpacity * nodeOpacity) > MIN_MEANINGFUL_FILL_OPACITY;
 }
 
 /**
