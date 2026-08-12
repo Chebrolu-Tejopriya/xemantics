@@ -1066,6 +1066,7 @@ async function applyTo(nodes, overrides) {
   // same picker-card component — just kept in one combined list, separate
   // from the visible unmapped/unknown lists above.
   const hiddenList = toUnmappedList(hiddenUnmapped).concat(toUnknownList(hiddenUnknown)).sort(byCount);
+  const tokens = await tokenPalette(Object.keys(semVars).sort(), semVars);
 
   return {
     applied: applied,
@@ -1076,7 +1077,7 @@ async function applyTo(nodes, overrides) {
     mixedResolved: mixedResolved,
     unmapped: unmappedList,
     unknown: unknownList,
-    tokens: tokenPalette(Object.keys(semVars).sort()),
+    tokens: tokens,
     changes: changes,
     alreadySemanticSample: alreadySemanticSample,
     unresolvedVarSample: unresolvedVarSample,
@@ -1086,16 +1087,79 @@ async function applyTo(nodes, overrides) {
   };
 }
 
-/** Token names paired with their Light/Dark hex, so the picker can show a swatch. */
-function tokenPalette(names) {
-  return names.map(function (n) {
-    const prim = SEMANTICS[n];
+/**
+ * Best-effort mode-name -> id lookup for a variable's own collection, so we
+ * know which valuesByMode entry is "Light" vs "Dark" without hardcoding
+ * ids (every file's mode ids are its own). Falls back to positional
+ * (first/second mode) if neither name matches — still better than nothing.
+ */
+async function lightDarkModeIds(collectionId) {
+  try {
+    const col = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!col || !col.modes || !col.modes.length) return { light: null, dark: null };
+    const light = col.modes.find(m => /light/i.test(m.name));
+    const dark = col.modes.find(m => /dark/i.test(m.name));
     return {
-      name: n,
-      light: (prim && HEX_LIGHT[prim]) || null,
-      dark: (prim && HEX_DARK[prim]) || null,
+      light: light ? light.modeId : (col.modes[0] ? col.modes[0].modeId : null),
+      dark: dark ? dark.modeId : (col.modes[1] ? col.modes[1].modeId : null),
     };
-  });
+  } catch (e) {
+    return { light: null, dark: null };
+  }
+}
+
+/**
+ * Resolves a semantic Variable's actual bound colour for one mode,
+ * following exactly one alias hop (semantic -> primitive is always a
+ * single hop in this system; a value that's itself still an alias after
+ * that isn't chased further, to keep this bounded and simple).
+ */
+async function resolveVariableHex(v, modeId) {
+  if (!v || !v.valuesByMode || modeId == null) return null;
+  const val = v.valuesByMode[modeId];
+  if (val === undefined) return null;
+  if (val && val.type === "VARIABLE_ALIAS") {
+    try {
+      const alias = await figma.variables.getVariableByIdAsync(val.id);
+      if (!alias || !alias.valuesByMode) return null;
+      const keys = Object.keys(alias.valuesByMode);
+      let aliasVal = alias.valuesByMode[modeId];
+      if (aliasVal === undefined) aliasVal = keys.length ? alias.valuesByMode[keys[0]] : undefined;
+      if (!aliasVal || aliasVal.type === "VARIABLE_ALIAS" || typeof aliasVal.r !== "number") return null;
+      return hex(aliasVal);
+    } catch (e) {
+      return null;
+    }
+  }
+  return typeof val.r === "number" ? hex(val) : null;
+}
+
+/**
+ * Token names paired with their Light/Dark hex, so the picker can show a
+ * swatch. Prefers the hardcoded SEMANTICS -> primitive -> HEX_LIGHT/DARK
+ * table (fast, no extra Figma calls) but falls back to resolving the REAL
+ * bound variable's actual colour when a token isn't catalogued there at
+ * all — confirmed live: "Border/border-success" is a genuine token in the
+ * file that was never added to SEMANTICS, so its picker swatch fell back
+ * to a flat placeholder grey instead of its real green. This keeps the
+ * swatch accurate for any real token, catalogued or not, instead of
+ * needing every one added to the table by hand.
+ */
+async function tokenPalette(names, semVars) {
+  const out = [];
+  for (const n of names) {
+    const prim = SEMANTICS[n];
+    let light = (prim && HEX_LIGHT[prim]) || null;
+    let dark = (prim && HEX_DARK[prim]) || null;
+    if ((!light || !dark) && semVars && semVars[n]) {
+      const v = semVars[n];
+      const modes = await lightDarkModeIds(v.variableCollectionId);
+      if (!light) light = await resolveVariableHex(v, modes.light);
+      if (!dark) dark = await resolveVariableHex(v, modes.dark);
+    }
+    out.push({ name: n, light: light, dark: dark });
+  }
+  return out;
 }
 
 async function bindSignature(sig, semanticName, ids) {
