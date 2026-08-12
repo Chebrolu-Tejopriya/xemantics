@@ -194,8 +194,8 @@ function renderHidden(list){
  * by default; expand to read off exactly why a specific colour didn't
  * convert or get flagged.
  */
-function renderDiagnostics(alreadySemanticSample, unresolvedVarSample){
-  if(!alreadySemanticSample.length && !unresolvedVarSample.length) return '';
+function renderDiagnostics(alreadySemanticSample, unresolvedVarSample, strongBgSample){
+  if(!alreadySemanticSample.length && !unresolvedVarSample.length && !(strongBgSample && strongBgSample.length)) return '';
   var h = '<details class="sec"><summary style="cursor:pointer;font-weight:600;font-size:12px;">Diagnostics (why a colour was skipped)</summary>';
   if(alreadySemanticSample.length){
     h += '<p style="margin:8px 0 4px;font-size:11px;color:var(--ink2);">Treated as "already semantic" — bound name/collection matched the skip check:</p>';
@@ -210,6 +210,22 @@ function renderDiagnostics(alreadySemanticSample, unresolvedVarSample){
     h += '<div style="font-family:var(--mono);font-size:10px;line-height:1.6;">';
     unresolvedVarSample.forEach(function(s){
       h += esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — hex: <b>' + esc(s.hex) + '</b><br>';
+    });
+    h += '</div>';
+  }
+  if(strongBgSample && strongBgSample.length){
+    h += '<p style="margin:10px 0 4px;font-size:11px;color:var(--ink2);">Dark content that did NOT get forced to a light colour — exactly what the ancestor walk saw, level by level:</p>';
+    h += '<div style="font-family:var(--mono);font-size:10px;line-height:1.6;">';
+    strongBgSample.forEach(function(s){
+      h += '<div style="margin-bottom:6px;"><b>' + esc(s.layer) + '</b> — ' + esc(s.prop) + '·' + esc(s.type) + ' — own hex: ' + esc(s.hex) + '<br>';
+      s.trace.forEach(function(t){
+        if(t.stopped){ h += '&nbsp;&nbsp;' + esc(t.stopped) + '<br>'; return; }
+        h += '&nbsp;&nbsp;[' + t.depth + '] ' + esc(t.name) + ' (' + esc(t.type) + ') — hasFill:' + t.hasFill +
+             ' paintOp:' + (t.paintOpacity===null?'-':t.paintOpacity) + ' nodeOp:' + t.nodeOpacity +
+             ' hex:' + esc(t.hex||'-') + ' countedAsFill:' + t.countedAsFill +
+             (t.countedAsFill ? ' strong:' + t.strong + ' <b>(stopped here)</b>' : '') + '<br>';
+      });
+      h += '</div>';
     });
     h += '</div>';
   }
@@ -395,7 +411,7 @@ onmessage = function(e){
     h += renderHidden(m.hidden || []);
     h += renderMixedFills(m.hiddenMixedFills || [], 'hmx', 'Hidden layers (mixed fill)',
       'Same as Mixed-fill layers above, but hidden in Figma right now — kept separate for the same reason.');
-    h += renderDiagnostics(m.alreadySemanticSample || [], m.unresolvedVarSample || []);
+    h += renderDiagnostics(m.alreadySemanticSample || [], m.unresolvedVarSample || [], m.strongBgSample || []);
     $("out").innerHTML = h; $("out").classList.add("show");
     wire(m.unmapped || [], 'u');
     wire(m.unknown || [], 'x');

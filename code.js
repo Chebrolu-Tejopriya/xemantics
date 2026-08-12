@@ -921,13 +921,31 @@ function ownFillIsStrongBg(node, resolved, HEX_INDEX) {
  * card sitting on top of a dark/coloured page correctly does NOT force
  * its own content to white just because the page underneath is dark.
  */
-function onStrongBackground(node, resolved, HEX_INDEX) {
+function onStrongBackground(node, resolved, HEX_INDEX, trace) {
   let n = node.parent, depth = 0;
   while (n && depth < STRONG_BG_MAX_DEPTH) {
-    if (hasOwnVisibleFill(n)) return ownFillIsStrongBg(n, resolved, HEX_INDEX);
+    const solid = "fills" in n ? firstSolid(n.fills) : null;
+    const paintOpacity = solid && typeof solid.opacity === "number" ? solid.opacity : 1;
+    const nodeOpacity = typeof n.opacity === "number" ? n.opacity : 1;
+    const visible = hasOwnVisibleFill(n);
+    if (trace) {
+      trace.push({
+        name: (n.name || "").slice(0, 30),
+        type: n.type,
+        depth: depth,
+        hasFill: !!solid,
+        paintOpacity: solid ? paintOpacity : null,
+        nodeOpacity: nodeOpacity,
+        hex: solid ? hex(solid.color) : null,
+        countedAsFill: visible,
+        strong: visible ? ownFillIsStrongBg(n, resolved, HEX_INDEX) : null,
+      });
+    }
+    if (visible) return ownFillIsStrongBg(n, resolved, HEX_INDEX);
     n = n.parent;
     depth++;
   }
+  if (trace) trace.push({ stopped: "max depth (" + STRONG_BG_MAX_DEPTH + ") reached with no visible fill found" });
   return false;
 }
 
@@ -1540,6 +1558,7 @@ async function applyTo(nodes, overrides) {
   }
   const alreadySemanticSample = [];
   const unresolvedVarSample = [];
+  const strongBgSample = [];
 
   for (let i = 0; i < raw.length; i++) {
     const t = raw[i];
@@ -1581,9 +1600,19 @@ async function applyTo(nodes, overrides) {
                : (role === "row" && t.prop === "strokes") ? TABLE_BORDER_SEMANTIC
                : null;
     if (!forced && t.prop === "fills" &&
-        (t.node.type === "TEXT" || t.node.type === "VECTOR" || t.node.type === "BOOLEAN_OPERATION") &&
-        onStrongBackground(t.node, resolved, HEX_INDEX)) {
-      forced = TEXT_ON_STRONG_BG_SEMANTIC;
+        (t.node.type === "TEXT" || t.node.type === "VECTOR" || t.node.type === "BOOLEAN_OPERATION")) {
+      // Diagnostic: for a layer whose OWN colour is already dark (a
+      // plausible false-negative case — dark content that maybe SHOULD
+      // have been forced to white but wasn't), trace exactly what the
+      // ancestor walk saw at each level. Capped so this stays cheap.
+      const wantsTrace = t.hex && isVeryDark(t.hex) && strongBgSample.length < 15;
+      const traceArr = wantsTrace ? [] : null;
+      const strong = onStrongBackground(t.node, resolved, HEX_INDEX, traceArr);
+      if (strong) {
+        forced = TEXT_ON_STRONG_BG_SEMANTIC;
+      } else if (traceArr) {
+        strongBgSample.push({ layer: (t.node.name || "").slice(0, 30), prop: t.prop, type: t.node.type, hex: t.hex, trace: traceArr });
+      }
     }
     if (!forced && t.prop === "fills" &&
         (t.node.type === "TEXT" || t.node.type === "VECTOR" || t.node.type === "BOOLEAN_OPERATION") &&
@@ -1785,6 +1814,7 @@ async function applyTo(nodes, overrides) {
     changes: changes,
     alreadySemanticSample: alreadySemanticSample,
     unresolvedVarSample: unresolvedVarSample,
+    strongBgSample: strongBgSample,
     mixedFills: mixedList,
     hidden: hiddenList,
     hiddenMixedFills: hiddenMixedList,
