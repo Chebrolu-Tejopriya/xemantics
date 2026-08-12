@@ -1705,22 +1705,39 @@ async function lightDarkModeIds(collectionId) {
 }
 
 /**
- * Resolves a semantic Variable's actual bound colour for one mode,
- * following exactly one alias hop (semantic -> primitive is always a
+ * Resolves a semantic Variable's actual bound colour for the light or dark
+ * side, following exactly one alias hop (semantic -> primitive is always a
  * single hop in this system; a value that's itself still an alias after
  * that isn't chased further, to keep this bounded and simple).
+ *
+ * The alias target (a primitive variable) lives in its OWN collection with
+ * its OWN mode ids — never the same ids as the semantic collection's. Confirmed
+ * live: "Border/border-success"'s swatch showed one flat colour instead of
+ * a light/dark split, because looking up the primitive's valuesByMode with
+ * the SEMANTIC collection's mode id predictably found nothing, and the old
+ * fallback grabbed the primitive's "first available" mode regardless of
+ * whether light or dark was being resolved — so both calls landed on the
+ * exact same value. Now the primitive's OWN collection is checked for a
+ * same-named Light/Dark mode too, so light and dark resolve independently.
  */
-async function resolveVariableHex(v, modeId) {
-  if (!v || !v.valuesByMode || modeId == null) return null;
+async function resolveVariableHex(v, wantLight) {
+  if (!v || !v.valuesByMode) return null;
+  const modes = await lightDarkModeIds(v.variableCollectionId);
+  const modeId = wantLight ? modes.light : modes.dark;
+  if (modeId == null) return null;
   const val = v.valuesByMode[modeId];
   if (val === undefined) return null;
   if (val && val.type === "VARIABLE_ALIAS") {
     try {
       const alias = await figma.variables.getVariableByIdAsync(val.id);
       if (!alias || !alias.valuesByMode) return null;
-      const keys = Object.keys(alias.valuesByMode);
-      let aliasVal = alias.valuesByMode[modeId];
-      if (aliasVal === undefined) aliasVal = keys.length ? alias.valuesByMode[keys[0]] : undefined;
+      const aliasModes = await lightDarkModeIds(alias.variableCollectionId);
+      const aliasModeId = wantLight ? aliasModes.light : aliasModes.dark;
+      let aliasVal = aliasModeId != null ? alias.valuesByMode[aliasModeId] : undefined;
+      if (aliasVal === undefined) {
+        const keys = Object.keys(alias.valuesByMode);
+        aliasVal = keys.length ? alias.valuesByMode[keys[0]] : undefined;
+      }
       if (!aliasVal || aliasVal.type === "VARIABLE_ALIAS" || typeof aliasVal.r !== "number") return null;
       return hex(aliasVal);
     } catch (e) {
@@ -1749,9 +1766,8 @@ async function tokenPalette(names, semVars) {
     let dark = (prim && HEX_DARK[prim]) || null;
     if ((!light || !dark) && semVars && semVars[n]) {
       const v = semVars[n];
-      const modes = await lightDarkModeIds(v.variableCollectionId);
-      if (!light) light = await resolveVariableHex(v, modes.light);
-      if (!dark) dark = await resolveVariableHex(v, modes.dark);
+      if (!light) light = await resolveVariableHex(v, true);
+      if (!dark) dark = await resolveVariableHex(v, false);
     }
     out.push({ name: n, light: light, dark: dark });
   }
