@@ -635,12 +635,24 @@ function resolveSemanticForPrimitive(prop, type, primitive, overrides, GROUP_IND
   }
   return semantic;
 }
+/**
+ * Visits every node in the tree, passing each callback both the node and
+ * whether IT (or any ancestor) is hidden — a node's own `visible` defaults
+ * true even when it sits inside a hidden parent, so ancestor state has to
+ * be tracked through the walk rather than checked on each node in
+ * isolation. Used to route hidden layers out of the review lists (see
+ * "Hidden layers" in applyTo()) instead of cluttering them with colours
+ * the user can't even see on canvas.
+ */
 function walk(root, fn) {
-  const stack = [root];
+  const stack = [{ n: root, hidden: root.visible === false }];
   while (stack.length) {
-    const n = stack.pop();
-    fn(n);
-    if ("children" in n) for (const c of n.children) stack.push(c);
+    const item = stack.pop();
+    const n = item.n, hidden = item.hidden;
+    fn(n, hidden);
+    if ("children" in n) {
+      for (const c of n.children) stack.push({ n: c, hidden: hidden || c.visible === false });
+    }
   }
 }
 
@@ -1138,7 +1150,7 @@ async function scan(nodes) {
   const styleIds = {};
   const mixed = [];
   for (const root of nodes) {
-    walk(root, n => {
+    walk(root, (n, hidden) => {
       for (const prop of ["fills", "strokes"]) {
         if (!(prop in n)) continue;
         if (!Array.isArray(n[prop])) {
@@ -1151,7 +1163,7 @@ async function scan(nodes) {
           // every report for exactly this reason. Surfaced explicitly
           // instead, since there's no single colour here to offer a "Map"
           // dropdown for — this needs a human to look at the layer itself.
-          mixed.push({ node: n, prop: prop });
+          mixed.push({ node: n, prop: prop, hidden: hidden });
           continue;
         }
         const solid = firstSolid(n[prop]);
@@ -1159,7 +1171,7 @@ async function scan(nodes) {
         const bv = n.boundVariables && n.boundVariables[prop];
         if (bv && bv.length && bv[0].type === "VARIABLE_ALIAS") {
           varIds[bv[0].id] = 1;
-          raw.push({ node: n, prop: prop, varId: bv[0].id, hex: hex(solid.color) });
+          raw.push({ node: n, prop: prop, varId: bv[0].id, hex: hex(solid.color), hidden: hidden });
           continue;
         }
         // No Variable binding — check the separate legacy Style system
@@ -1170,9 +1182,9 @@ async function scan(nodes) {
         if (styleId && typeof styleId === "string" && styleId.length) {
           const key = "style:" + styleId;
           styleIds[styleId] = 1;
-          raw.push({ node: n, prop: prop, varId: key, hex: hex(solid.color) });
+          raw.push({ node: n, prop: prop, varId: key, hex: hex(solid.color), hidden: hidden });
         } else {
-          raw.push({ node: n, prop: prop, varId: null, hex: hex(solid.color) });
+          raw.push({ node: n, prop: prop, varId: null, hex: hex(solid.color), hidden: hidden });
         }
       }
     });
@@ -1366,12 +1378,25 @@ async function applyTo(nodes, overrides) {
   let applied = 0, structural = 0, removed = 0, alreadySemantic = 0, preserved = 0, mixedResolved = 0;
   const unmapped = {};
   const unknown = {};
+  // Layers that are hidden (the node itself, or any ancestor) get the exact
+  // same shape of entry as unmapped/unknown, just kept in a separate bucket
+  // so the "review this" lists aren't cluttered with colours the user can't
+  // currently see on canvas — see the "Hidden layers" section in the UI.
+  const hiddenUnmapped = {};
+  const hiddenUnknown = {};
   const changes = [];
 
   // Mixed-fill text layers: try to resolve each segment independently
   // first — see resolveMixedTextFill() — and only report the ones that
   // genuinely need a human decision (some segment couldn't be resolved).
+  // Hidden layers (the node itself, or any ancestor, toggled off in
+  // Figma) still get resolved/applied normally when possible — no reason
+  // to skip a clean auto-fix just because it's not currently visible —
+  // but if it genuinely needs a human decision, it goes into a separate
+  // "Hidden layers" bucket instead of cluttering the main review list
+  // with something the user can't even see on canvas right now.
   const mixedList = [];
+  const hiddenMixedList = [];
   for (const m of scanned.mixed) {
     const result = await resolveMixedTextFill(m.node, m.prop, resolved, HEX_INDEX, GROUP_INDEX, overrides, semVars, getSem);
     if (result) {
@@ -1388,11 +1413,13 @@ async function applyTo(nodes, overrides) {
       // primitive at all and was left untouched — still worth flagging so
       // it isn't mistaken for fully done.
       if (result.partial) {
-        mixedList.push({ layer: (m.node.name || "").slice(0, 40), prop: m.prop, type: m.node.type, id: m.node.id, partial: true });
+        const entry = { layer: (m.node.name || "").slice(0, 40), prop: m.prop, type: m.node.type, id: m.node.id, partial: true };
+        (m.hidden ? hiddenMixedList : mixedList).push(entry);
       }
       continue;
     }
-    mixedList.push({ layer: (m.node.name || "").slice(0, 40), prop: m.prop, type: m.node.type, id: m.node.id });
+    const entry = { layer: (m.node.name || "").slice(0, 40), prop: m.prop, type: m.node.type, id: m.node.id };
+    (m.hidden ? hiddenMixedList : mixedList).push(entry);
   }
   const alreadySemanticSample = [];
   const unresolvedVarSample = [];
@@ -1523,7 +1550,8 @@ async function applyTo(nodes, overrides) {
           continue;
         }
       }
-      const u = unknown[sig] = unknown[sig] || {
+      const unknownTarget = t.hidden ? hiddenUnknown : unknown;
+      const u = unknownTarget[sig] = unknownTarget[sig] || {
         sig: sig, count: 0, ids: [], hex: t.hex, primitive: label,
         prop: t.prop, type: t.node.type,
         suggested: nearestSemanticInGroup(t.hex, GROUP_FOR[t.prop + "|" + t.node.type], semVars),
@@ -1564,7 +1592,8 @@ async function applyTo(nodes, overrides) {
     let semantic = resolveSemanticForPrimitive(t.prop, t.node.type, primitive, overrides, GROUP_INDEX);
 
     if (!semantic || !semVars[semantic]) {
-      const u = unmapped[sig] = unmapped[sig] || {
+      const unmappedTarget = t.hidden ? hiddenUnmapped : unmapped;
+      const u = unmappedTarget[sig] = unmappedTarget[sig] || {
         count: 0, ids: [], hex: t.hex, primitive: primitive,
         prop: t.prop, type: t.node.type,
         suggested: nearestSemanticInGroup(t.hex, GROUP_FOR[t.prop + "|" + t.node.type], semVars),
@@ -1584,22 +1613,30 @@ async function applyTo(nodes, overrides) {
   }
 
   const byCount = function (a, b) { return b.count - a.count; };
-  const unmappedList = Object.keys(unmapped).map(function (sig) {
-    const u = unmapped[sig];
-    return {
-      sig: sig,
-      prop: u.prop,
-      type: u.type,
-      primitive: u.primitive,
-      hex: u.hex,
-      count: u.count,
-      ids: u.ids,
-      suggested: u.suggested,
-    };
-  }).sort(byCount);
-  const unknownList = Object.keys(unknown).map(function (sig) {
-    return unknown[sig];
-  }).sort(byCount);
+  function toUnmappedList(dict) {
+    return Object.keys(dict).map(function (sig) {
+      const u = dict[sig];
+      return {
+        sig: sig,
+        prop: u.prop,
+        type: u.type,
+        primitive: u.primitive,
+        hex: u.hex,
+        count: u.count,
+        ids: u.ids,
+        suggested: u.suggested,
+      };
+    }).sort(byCount);
+  }
+  function toUnknownList(dict) {
+    return Object.keys(dict).map(function (sig) { return dict[sig]; }).sort(byCount);
+  }
+  const unmappedList = toUnmappedList(unmapped);
+  const unknownList = toUnknownList(unknown);
+  // Same entry shape either way, so the UI can render both kinds with the
+  // same picker-card component — just kept in one combined list, separate
+  // from the visible unmapped/unknown lists above.
+  const hiddenList = toUnmappedList(hiddenUnmapped).concat(toUnknownList(hiddenUnknown)).sort(byCount);
 
   return {
     applied: applied,
@@ -1615,6 +1652,8 @@ async function applyTo(nodes, overrides) {
     alreadySemanticSample: alreadySemanticSample,
     unresolvedVarSample: unresolvedVarSample,
     mixedFills: mixedList,
+    hidden: hiddenList,
+    hiddenMixedFills: hiddenMixedList,
   };
 }
 
