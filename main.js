@@ -1005,7 +1005,7 @@ async function applyTo(nodes, overrides) {
       if (strong) {
         forced = TEXT_ON_STRONG_BG_SEMANTIC;
       } else if (traceArr) {
-        strongBgSample.push({ layer: (t.node.name || "").slice(0, 30), prop: t.prop, type: t.node.type, hex: t.hex, trace: traceArr });
+        strongBgSample.push({ layer: (t.node.name || "").slice(0, 30), prop: t.prop, type: t.node.type, hex: t.hex, id: t.node.id, trace: traceArr });
       }
     }
     if (!forced && t.prop === "fills" &&
@@ -1193,6 +1193,25 @@ async function applyTo(nodes, overrides) {
   // same picker-card component — just kept in one combined list, separate
   // from the visible unmapped/unknown lists above.
   const hiddenList = toUnmappedList(hiddenUnmapped).concat(toUnknownList(hiddenUnknown)).sort(byCount);
+
+  // Cross-reference: a layer traced in strongBgSample (dark content that
+  // stayed dark) might ALSO be sitting unmapped — the strong-bg check and
+  // the normal primitive/rule resolution run independently, so neither
+  // list knows about the other on its own. Tag each trace entry that
+  // genuinely needs a token picked, so the UI can jump straight to its
+  // card instead of just explaining the colour with nothing to act on.
+  const mapIndexById = {};
+  unmappedList.concat(unknownList).forEach(function (u) {
+    u.ids.forEach(function (id) { mapIndexById[id] = { sig: u.sig, where: "tomap" }; });
+  });
+  hiddenList.forEach(function (u) {
+    u.ids.forEach(function (id) { if (!mapIndexById[id]) mapIndexById[id] = { sig: u.sig, where: "hidden" }; });
+  });
+  strongBgSample.forEach(function (s) {
+    const hit = s.id && mapIndexById[s.id];
+    if (hit) { s.needsMapSig = hit.sig; s.needsMapWhere = hit.where; }
+  });
+
   const tokens = await tokenPalette(Object.keys(semVars).sort(), semVars);
 
   return {

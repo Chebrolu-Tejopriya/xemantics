@@ -90,6 +90,8 @@
     transition:border-color .15s,background .15s,box-shadow .15s;background:var(--surface);}
   .card.done{background:var(--success-soft);border-color:var(--success-line);}
   .card.selected{background:var(--accent-soft);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  @keyframes flashCard{0%,100%{box-shadow:0 0 0 0 rgba(0,82,254,0);}30%{box-shadow:0 0 0 4px rgba(0,82,254,.35);}}
+  .card.flash{animation:flashCard 1s ease;}
   .card-top{display:flex;align-items:center;gap:9px;}
   .sw{width:22px;height:22px;border-radius:6px;border:1px solid rgba(15,23,42,.1);flex:0 0 auto;
     cursor:pointer;overflow:hidden;}
@@ -162,6 +164,10 @@
   .diag-row-flex > button{flex:0 0 auto;}
   .diag-line{margin:2px 0;}
   .diag-line-dim{color:var(--ink-3);}
+  .diag-line-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:2px 0;}
+  .tag-accent-btn{color:var(--accent);background:var(--accent-soft);border-color:var(--accent-line);
+    font-size:9.5px;padding:3px 8px;}
+  .tag-accent-btn:hover{background:var(--accent-soft);border-color:var(--accent);}
 
   /* ---- footer ---- */
   .app-foot{margin-top:16px;padding-top:12px;border-top:1px solid var(--line-soft);text-align:center;}
@@ -294,9 +300,13 @@ function toMapMerged(unmapped, unknown){
   return unmapped.concat(unknown).sort(function(a,b){ return b.count - a.count; });
 }
 
+/** Maps a card's underlying signature to its DOM id, so the Diagnostics
+ * cross-reference can jump straight to the matching "To map"/"Hidden" card. */
+var sigToCardId = {};
 function wirePickerCards(list, kind){
   list.forEach(function(u, i){
     var id = kind+i;
+    sigToCardId[u.sig] = id;
     var sw = document.querySelector('.sw[data-i="'+id+'"]');
     var sel = document.querySelector('button[data-sel="'+id+'"]');
     var bind = document.querySelector('button[data-bind="'+id+'"]');
@@ -437,9 +447,11 @@ function diagnosticsInnerHtml(alreadySemanticSample, unresolvedVarSample, strong
   }
   if(strongBgSample && strongBgSample.length){
     h += '<div class="diag-block"><p>Dark text/icons that stayed dark — here\'s what nearby backgrounds looked like:</p><div class="diag-log">';
-    strongBgSample.forEach(function(s){
+    strongBgSample.forEach(function(s, i){
       h += '<div class="diag-row" data-layer="'+esc((s.layer||'').toLowerCase())+'">' +
-        '<div class="diag-line"><b>'+esc(s.layer)+'</b> ('+esc((s.type||'').toLowerCase())+', colour '+esc(s.hex)+')</div>';
+        '<div class="diag-line diag-line-head"><b>'+esc(s.layer)+'</b> ('+esc((s.type||'').toLowerCase())+', colour '+esc(s.hex)+')' +
+        (s.needsMapSig ? ' <button class="btn-ghost tag-accent-btn" data-diag-map="'+i+'">Needs mapping — jump to it ↑</button>' : '') +
+        '</div>';
       s.trace.forEach(function(t){ h += traceLineHtml(t); });
       h += '</div>';
     });
@@ -470,6 +482,41 @@ function wireUnresolvedSelect(unresolvedVarSample){
     if(!s.id) return;
     var btn = document.querySelector('button[data-unres-sel="'+i+'"]');
     if(btn) btn.onclick = function(){ send({type:"highlight", ids:[s.id]}); };
+  });
+}
+
+/**
+ * A layer traced in the strong-background log can ALSO be sitting
+ * unmapped — those two checks run independently, so main.js tags
+ * matching entries with needsMapSig/needsMapWhere. Clicking jumps
+ * straight to that card (opening the Hidden accordion first if that's
+ * where it lives) and flashes it, instead of leaving the user to
+ * cross-reference two lists by hand.
+ */
+function wireDiagMapLinks(strongBgSample){
+  (strongBgSample || []).forEach(function(s, i){
+    if(!s.needsMapSig) return;
+    var btn = document.querySelector('button[data-diag-map="'+i+'"]');
+    if(!btn) return;
+    btn.onclick = function(){
+      var jumpToCard = function(){
+        var cardId = sigToCardId[s.needsMapSig];
+        var card = cardId ? $("card-"+cardId) : null;
+        if(!card) return;
+        card.scrollIntoView({behavior:'smooth', block:'center'});
+        card.classList.add('flash');
+        setTimeout(function(){ card.classList.remove('flash'); }, 1000);
+      };
+      if(s.needsMapWhere === 'hidden'){
+        var acc = document.querySelector('.accordion[data-acc="hidden"]');
+        if(acc && !acc.classList.contains('open')){
+          document.querySelector('button[data-acc-head="hidden"]').click();
+          setTimeout(jumpToCard, 260);
+          return;
+        }
+      }
+      jumpToCard();
+    };
   });
 }
 
@@ -571,6 +618,7 @@ onmessage = function(e){
   if(m.type === "done"){
     TOKENS = m.tokens || [];
     $("go").disabled = false; resetGoButton();
+    sigToCardId = {};
 
     var unmapped = m.unmapped || [], unknown = m.unknown || [];
     var mixedFills = m.mixedFills || [];
@@ -611,7 +659,11 @@ onmessage = function(e){
       wireMixedCards(hiddenMixedFills, 'hmx');
       wireAccordion('hidden');
     }
-    if(diagInner){ wireAccordion('diag'); wireDiagFilter(); wireUnresolvedSelect(m.unresolvedVarSample || []); }
+    if(diagInner){
+      wireAccordion('diag'); wireDiagFilter();
+      wireUnresolvedSelect(m.unresolvedVarSample || []);
+      wireDiagMapLinks(m.strongBgSample || []);
+    }
 
     fitWindow();
     return;
