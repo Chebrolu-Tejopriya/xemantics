@@ -655,7 +655,15 @@ async function primitiveForPaint(solid, node, prop, resolved, HEX_INDEX) {
       if (info.collection === SEM_COLLECTION || SEMANTICS[info.name] !== undefined) {
         return { alreadySemantic: info.name };
       }
-      return { primitive: normalisePrim(info.name, hex(solid.color)) };
+      const rawHexForVar = hex(solid.color);
+      let namedPrim = normalisePrim(info.name, rawHexForVar);
+      // Same exact-hex fallback as the main loop: a name-based miss just
+      // echoes the original (unrecognised) name back, which would
+      // otherwise skip the exact-hex check entirely.
+      if (namedPrim && HEX_LIGHT[namedPrim] === undefined) {
+        namedPrim = HEX_INDEX[rawHexForVar] || namedPrim;
+      }
+      return { primitive: namedPrim };
     }
   }
   const rawHex = hex(solid.color);
@@ -942,6 +950,22 @@ async function applyTo(nodes, overrides) {
           continue;
         }
         primitive = normalisePrim(info.name, t.hex);
+        if (primitive && HEX_LIGHT[primitive] === undefined) {
+          // normalisePrim couldn't identify a real primitive by name at all
+          // — it just echoed the original (unrecognised) name back, which
+          // is truthy and so silently skipped the exact-hex fallback below
+          // (that check only runs `if (!primitive)`). Confirmed live: a
+          // variable literally named "text/green1" (#0FBA83, an EXACT
+          // match for Green/09(Base)) and "Primary/Blue" (#0052FE, exact
+          // Blue/09(Base)) were both landing in "Unrecognised colour"
+          // under their foreign names, even though their rendered colour
+          // is an unambiguous match — just checked by name, hex never
+          // even attempted for a bound-but-unrecognised variable. If the
+          // exact hex doesn't match anything either, this leaves the
+          // original name-echo in place (still an accurate, informative
+          // "Unrecognised colour" label via `resolved[t.varId].name` below).
+          primitive = HEX_INDEX[t.hex] || primitive;
+        }
       } else if (unresolvedVarSample.length < 30) {
         // Bound to a variable id, but resolveVarNames couldn't resolve a
         // name for it at all (getVariableByIdAsync returned null/threw) —
