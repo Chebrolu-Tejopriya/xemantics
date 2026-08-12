@@ -90,8 +90,6 @@
     transition:border-color .15s,background .15s,box-shadow .15s;background:var(--surface);}
   .card.done{background:var(--success-soft);border-color:var(--success-line);}
   .card.selected{background:var(--accent-soft);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
-  @keyframes flashCard{0%,100%{box-shadow:0 0 0 0 rgba(0,82,254,0);}50%{box-shadow:0 0 0 4px rgba(0,82,254,.35);}}
-  .card.flash{animation:flashCard 1.3s ease infinite;}
   .card-top{display:flex;align-items:center;gap:9px;}
   .sw{width:22px;height:22px;border-radius:6px;border:1px solid rgba(15,23,42,.1);flex:0 0 auto;
     cursor:pointer;overflow:hidden;}
@@ -504,13 +502,10 @@ function wireDiagMapLinks(strongBgSample){
         var card = cardId ? $("card-"+cardId) : null;
         if(!card) return;
         card.scrollIntoView({behavior:'smooth', block:'center'});
-        card.classList.add('flash');
-        // Keeps pulsing until the card is actually clicked (capture phase,
-        // so it still clears even though the picker button and swatch
-        // stop the click from bubbling further for their own handlers).
-        card.addEventListener('click', function clearFlash(){
-          card.classList.remove('flash');
-        }, { capture:true, once:true });
+        // Same static highlight as clicking a swatch/Select elsewhere —
+        // steady border, no animation, clears automatically once
+        // something else gets selected.
+        markSelected(card);
       };
       if(s.needsMapWhere === 'hidden'){
         var acc = document.querySelector('.accordion[data-acc="hidden"]');
