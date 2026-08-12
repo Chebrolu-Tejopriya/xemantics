@@ -103,6 +103,7 @@ const RULES = {
   "fills|TEXT|Absolute/Black": "Content/content-absolute-black",
   "fills|TEXT|Blue/09(Base)": "Content/content-brand-primary",
   "fills|TEXT|Blue/10": "Content/content-brand-primary",   // Blue/10 has no Content token of its own; without this the group fallback grabs Surface/surface-brand-solid instead
+  "fills|TEXT|Blue/11": "Content/content-brand-primary",   // same gap one step darker — confirmed live via "Primary/DarkBlue" (#0141CF, exact Blue/11 match)
   "fills|TEXT|Red/09(Base)": "Content/content-error-primary",
   "fills|TEXT|Orange/09(Base)": "Content/content-warning-primary",
   "fills|TEXT|Green/09(Base)": "Content/content-success-primary",
