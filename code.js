@@ -610,8 +610,22 @@ function resolveSemanticForPrimitive(prop, type, primitive, overrides, GROUP_IND
     if (grp) {
       const c = GROUP_INDEX[grp + "|" + lookup];
       if (c && c.length) semantic = c[0];
-    }
-    if (!semantic) {
+      // Deliberately NO fallback to a different group here. A Surface
+      // context must never resolve to a Content/Border/Label token just
+      // because some OTHER group happens to alias the same primitive —
+      // confirmed live: a table header background (Surface) was wrongly
+      // bound to Content/content-primary this way. This exact bug class
+      // was previously patched per-primitive (the Gray/05-07 icon fix
+      // added explicit RULES entries to dodge it) rather than fixed at
+      // the root, which meant every primitive WITHOUT a hand-added
+      // workaround kept hitting it — especially foreign (non-KoinX)
+      // primitives, which have none. Leaving it unresolved (falls into
+      // "Needs mapping", with a same-group suggestion from
+      // nearestSemanticInGroup) is correct; guessing across groups isn't.
+    } else {
+      // No known group for this prop+type combination at all (context
+      // genuinely ambiguous) — searching every group as a last resort is
+      // reasonable here, since there's no "correct" group to violate.
       const order = ["Surface", "Content", "Border", "Label"];
       for (let g = 0; g < order.length; g++) {
         const c = GROUP_INDEX[order[g] + "|" + lookup];
@@ -961,17 +975,43 @@ function nearestPrimitive(hexColor) {
  * rather than a confident-looking wrong one. This is a SUGGESTION only:
  * callers pre-fill the token picker with it, but nothing is bound until
  * the user clicks Map — never auto-applied.
+ *
+ * Two guardrails, both confirmed needed live:
+ *
+ * 1. Exception tokens (SUGGESTION_EXCLUDED_SEMANTICS) never enter the
+ *    candidate pool. content-on-solid / content-absolute-white/black /
+ *    surface-absolute exist for one specific case — text or an icon
+ *    sitting on a strong colour background — never as a generic "closest
+ *    colour" guess. A plain icon on the default page background isn't
+ *    that case just because its colour happens to be numerically close.
+ * 2. Each candidate is checked against ONE hex, not "whichever of
+ *    light/dark is closer". content-on-solid's own primitive
+ *    (Gray/01-Surface) is #FFFFFF in light mode but #171A26 (near-black)
+ *    in dark mode — checking both meant a near-black icon colour
+ *    (#200E32) could "match" a token that actually means solid white,
+ *    via a mode the token doesn't even display in for this comparison.
+ *    Every other nearest-match in this codebase (nearestPrimitive included)
+ *    has the same latent risk, but here it's the primary ranking signal
+ *    rather than a narrow last-resort disambiguator, so it bit first.
  */
+const SUGGESTION_EXCLUDED_SEMANTICS = {
+  "Content/content-on-solid": 1,
+  "Content/content-absolute-white": 1,
+  "Content/content-absolute-black": 1,
+  "Surface/surface-absolute": 1,
+};
 function nearestSemanticInGroup(hexColor, group, semVars) {
   if (!group) return null;
   let best = null, bestDist = Infinity;
   for (const name in semVars) {
     if (name.split("/")[0] !== group) continue;
+    if (SUGGESTION_EXCLUDED_SEMANTICS[name]) continue;
     const prim = SEMANTICS[name];
     if (!prim) continue;
-    const lHex = HEX_LIGHT[prim], dHex = HEX_DARK[prim];
-    if (lHex) { const d = hexDistance(hexColor, lHex); if (d < bestDist) { bestDist = d; best = name; } }
-    if (dHex) { const d = hexDistance(hexColor, dHex); if (d < bestDist) { bestDist = d; best = name; } }
+    const lHex = HEX_LIGHT[prim];
+    if (!lHex) continue;
+    const d = hexDistance(hexColor, lHex);
+    if (d < bestDist) { bestDist = d; best = name; }
   }
   return bestDist <= NEAREST_MATCH_MAX_DISTANCE ? best : null;
 }
