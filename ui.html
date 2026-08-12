@@ -36,6 +36,13 @@
   .btn-primary:active:not(:disabled){transform:translateY(1px);}
   .btn-primary:disabled{background:var(--line);border-color:var(--line);color:var(--ink-3);
     cursor:not-allowed;box-shadow:none;}
+  .btn-primary.loading{background:var(--accent);border-color:var(--accent);color:#fff;
+    cursor:wait;display:flex;align-items:center;justify-content:center;gap:8px;
+    animation:pulse 1.4s ease-in-out infinite;}
+  .spinner{width:14px;height:14px;flex:0 0 auto;border-radius:50%;
+    border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.82;}}
   .hint{text-align:center;color:var(--ink-2);font-size:11px;margin:8px 0 0;}
 
   .btn-ghost{font-size:10.5px;font-weight:600;padding:5px 9px;border-radius:var(--r-sm);
@@ -174,8 +181,20 @@ function send(o){ parent.postMessage({ pluginMessage:o }, "*"); }
 var TOKENS = [];   // [{name, light, dark}]
 var openMenu = null;
 
+/** A flat grey disabled button reads as dead, not busy — swap in a spinner and keep the accent colour instead. */
+function setGoApplying(){
+  var go = $("go");
+  go.disabled = true; go.classList.add('loading');
+  go.innerHTML = '<span class="spinner"></span>Applying…';
+}
+function resetGoButton(){
+  var go = $("go");
+  go.classList.remove('loading');
+  go.textContent = "Apply to selection";
+}
+
 $("go").onclick = function(){
-  $("go").disabled = true; $("go").textContent = "Applying…";
+  setGoApplying();
   send({type:"apply"});
 };
 $("clr").onclick = function(){ send({type:"clearOverrides"}); };
@@ -474,8 +493,8 @@ onmessage = function(e){
   var m = e.data.pluginMessage; if(!m) return;
 
   if(m.type === "selection"){
+    resetGoButton();
     $("go").disabled = m.count === 0;
-    $("go").textContent = "Apply to selection";
     $("hint").textContent = m.count === 0 ? "Select a frame"
       : m.count + " frame" + (m.count>1?"s":"") + " selected";
     fitWindow();
@@ -483,7 +502,7 @@ onmessage = function(e){
   }
   if(m.type === "error"){
     $("err").textContent = m.message; $("err").classList.add("show");
-    $("go").disabled = false; $("go").textContent = "Apply to selection";
+    $("go").disabled = false; resetGoButton();
     fitWindow();
     return;
   }
@@ -491,7 +510,7 @@ onmessage = function(e){
 
   if(m.type === "done"){
     TOKENS = m.tokens || [];
-    $("go").disabled = false; $("go").textContent = "Apply to selection";
+    $("go").disabled = false; resetGoButton();
 
     var unmapped = m.unmapped || [], unknown = m.unknown || [];
     var mixedFills = m.mixedFills || [];
