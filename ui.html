@@ -3,88 +3,170 @@
 <head>
 <meta charset="utf-8">
 <style>
-  :root{--ink:#0F172A;--ink2:#64748B;--line:#E2E8F0;--accent:#0052FE;--ok:#0B845D;
-        --warn-bg:#FEF3E2;--warn:#B45309;--mono:'SFMono-Regular',Consolas,Menlo,monospace;}
+  :root{
+    --ink:#0F172A; --ink-2:#64748B; --ink-3:#A0AEC0;
+    --line:#E7EAF0; --line-soft:#F1F3F7;
+    --surface:#FFFFFF; --surface-2:#F7F9FC;
+    --accent:#0052FE; --accent-hover:#0046D6; --accent-soft:#EEF3FF; --accent-line:#D6E4FF;
+    --success:#0B845D; --success-soft:#EFFBF5; --success-line:#CFEEE1;
+    --amber:#B45309; --amber-soft:#FFF8EC; --amber-line:#FCE7C8;
+    --danger:#B91C1C; --danger-soft:#FEF2F2; --danger-line:#FBD5D5;
+    --r-sm:6px; --r-md:10px; --r-lg:14px;
+    --shadow-sm:0 1px 2px rgba(15,23,42,.05);
+    --shadow-md:0 10px 28px rgba(15,23,42,.14);
+    --mono:'SF Mono',ui-monospace,Consolas,Menlo,monospace;
+  }
   *{box-sizing:border-box;}
   body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-       font-size:12px;line-height:1.5;color:var(--ink);background:#fff;}
-  .wrap{padding:14px;}
-  h1{font-size:13px;font-weight:600;margin:0 0 3px;}
-  .sub{color:var(--ink2);font-size:11px;margin:0 0 14px;}
-  button{font:inherit;font-size:13px;font-weight:500;padding:10px 14px;border-radius:7px;
-         border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;width:100%;}
-  button:hover{background:#0148DF;}
-  button:disabled{background:#CBD5E1;border-color:#CBD5E1;cursor:not-allowed;}
-  button.sm{font-size:11px;padding:5px 9px;width:auto;background:#fff;color:var(--ink);
-            border-color:var(--line);font-weight:500;}
-  button.sm:hover{border-color:#94A3B8;background:#F8FAFC;}
-  .hint{text-align:center;color:var(--ink2);font-size:11px;margin-top:7px;}
-  .out{margin-top:14px;display:none;}
+       font-size:12px;line-height:1.5;color:var(--ink);background:var(--surface);
+       -webkit-font-smoothing:antialiased;}
+  .wrap{padding:16px;}
+
+  /* ---- header ---- */
+  .app-head{margin-bottom:14px;}
+  .app-head h1{font-size:14px;font-weight:700;margin:0;letter-spacing:-.01em;}
+  .app-head .sub{color:var(--ink-2);font-size:11px;margin:2px 0 0;}
+
+  /* ---- buttons ---- */
+  button{font:inherit;cursor:pointer;}
+  .btn-primary{width:100%;font-size:13px;font-weight:600;padding:11px 14px;border-radius:var(--r-md);
+    border:1px solid var(--accent);background:var(--accent);color:#fff;
+    box-shadow:var(--shadow-sm);transition:background .12s,box-shadow .12s,transform .06s;}
+  .btn-primary:hover:not(:disabled){background:var(--accent-hover);box-shadow:var(--shadow-md);}
+  .btn-primary:active:not(:disabled){transform:translateY(1px);}
+  .btn-primary:disabled{background:var(--line);border-color:var(--line);color:var(--ink-3);
+    cursor:not-allowed;box-shadow:none;}
+  .hint{text-align:center;color:var(--ink-2);font-size:11px;margin:8px 0 0;}
+
+  .btn-ghost{font-size:10.5px;font-weight:600;padding:5px 9px;border-radius:var(--r-sm);
+    border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+    white-space:nowrap;transition:border-color .12s,background .12s,color .12s;}
+  .btn-ghost:hover{border-color:#C4CCDA;background:var(--surface-2);color:var(--ink);}
+
+  .btn-map{font-size:10.5px;font-weight:700;padding:5px 12px;border-radius:var(--r-sm);
+    border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3);
+    white-space:nowrap;transition:all .12s;}
+  .btn-map[data-chosen]{border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent);}
+  .btn-map[data-chosen]:hover{border-color:var(--accent);}
+  .btn-map:disabled{cursor:not-allowed;}
+  .btn-map.done{border-color:var(--success-line);background:var(--success-soft);color:var(--success);cursor:default;}
+
+  /* ---- banners ---- */
+  .banner{border-radius:var(--r-md);padding:10px 12px;font-size:11px;margin-top:10px;display:none;}
+  .banner.show{display:block;}
+  .banner-danger{background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger-line);}
+
+  /* ---- results ---- */
+  .out{margin-top:0;display:none;}
   .out.show{display:block;}
-  .big{display:flex;align-items:baseline;gap:6px;margin-bottom:6px;}
-  .big b{font-size:22px;font-weight:600;color:var(--ok);}
-  .big span{font-size:11px;color:var(--ink2);}
-  .row{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:var(--ink2);}
-  .row b{color:var(--ink);font-weight:600;}
-  .sec{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;}
-  .sec h2{font-size:12px;font-weight:600;margin:0 0 3px;}
-  .sec p{font-size:11px;color:var(--ink2);margin:0 0 10px;}
-  .card{border:1px solid var(--line);border-radius:8px;padding:9px;margin-bottom:8px;transition:border-color .12s,background .12s;}
-  .card.done{background:#F0FDF4;border-color:#BBF7D0;}
-  .card.selected{background:#EFF5FF;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
-  .ch{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
-  .sw{width:20px;height:20px;border-radius:4px;border:1px solid rgba(0,0,0,.12);flex:0 0 auto;}
-  .meta{flex:1;min-width:0;}
-  .meta .t{font-family:var(--mono);font-size:10.5px;font-weight:600;
-           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .meta .s{font-size:10px;color:var(--ink2);}
-  .ctl{position:relative;display:flex;gap:6px;align-items:center;}
+  .result{margin-top:14px;padding:14px;border-radius:var(--r-lg);
+    background:var(--success-soft);border:1px solid var(--success-line);}
+  .result-count{display:flex;align-items:baseline;gap:7px;}
+  .result-count b{font-size:26px;font-weight:800;color:var(--success);letter-spacing:-.02em;}
+  .result-count span{font-size:11.5px;color:var(--ink-2);font-weight:500;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;}
+  .chip{font-size:10px;font-weight:600;color:var(--ink-2);background:rgba(255,255,255,.7);
+    border:1px solid rgba(11,132,93,.18);padding:3px 8px;border-radius:99px;}
+  .chip b{color:var(--ink);}
+
+  /* ---- groups (To map / Mixed fills) ---- */
+  .group{margin-top:18px;}
+  .group-head{display:flex;align-items:center;gap:7px;}
+  .group-head h2{font-size:12px;font-weight:700;margin:0;}
+  .badge{font-size:10px;font-weight:700;color:var(--ink-2);background:var(--surface-2);
+    border:1px solid var(--line);padding:1px 7px;border-radius:99px;}
+  .group-hint{font-size:10.5px;color:var(--ink-3);margin:3px 0 10px;}
+  .card-list{display:flex;flex-direction:column;gap:7px;}
+
+  /* ---- card ---- */
+  .card{border:1px solid var(--line);border-radius:var(--r-md);padding:10px;
+    transition:border-color .15s,background .15s,box-shadow .15s;background:var(--surface);}
+  .card.done{background:var(--success-soft);border-color:var(--success-line);}
+  .card.selected{background:var(--accent-soft);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  .card-top{display:flex;align-items:center;gap:9px;}
+  .sw{width:22px;height:22px;border-radius:6px;border:1px solid rgba(15,23,42,.1);flex:0 0 auto;
+    cursor:pointer;overflow:hidden;}
+  .sw.split{display:flex;padding:0;}
+  .sw.split i{flex:1;display:block;}
+  .card-meta{flex:1;min-width:0;}
+  .card-title{font-family:var(--mono);font-size:11px;font-weight:700;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .card-sub{font-size:10px;color:var(--ink-3);margin-top:1px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+  .card-ctl{position:relative;display:flex;gap:6px;align-items:center;margin-top:9px;}
+
+  /* ---- tags ---- */
+  .tag{font-size:9px;font-weight:700;padding:1px 6px;border-radius:5px;letter-spacing:.01em;}
+  .tag-slate{color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);}
+  .tag-amber{color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-line);}
+  .tag-accent{color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-line);}
+
+  /* ---- picker ---- */
   .picker{flex:1;min-width:0;}
   .picker-btn{width:100%;display:flex;align-items:center;gap:7px;font:inherit;font-size:11px;
-              padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:#fff !important;
-              color:var(--ink);cursor:pointer;text-align:left;outline:none;}
-  .picker-btn:hover{border-color:#94A3B8;background:#fff !important;}
+    padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff !important;
+    color:var(--ink);cursor:pointer;text-align:left;outline:none;transition:border-color .12s,box-shadow .12s;}
+  .picker-btn:hover{border-color:#C4CCDA;background:#fff !important;}
   .picker-btn:active,.picker-btn:focus,.picker-btn:focus-visible,.picker-btn.open{
-    background:#fff !important;border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,82,254,.15);}
-  .picker-btn .ph{color:var(--ink2);}
-  .picker-btn .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .picker-btn .car{color:var(--ink2);font-size:9px;flex:0 0 auto;}
-  .picker-btn .tag{flex:0 0 auto;color:var(--accent);background:#EFF5FF;font-size:9px;
-                    font-weight:600;padding:1px 6px;border-radius:4px;}
-  .menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;
-        border:1px solid var(--line);border-radius:7px;box-shadow:0 6px 20px rgba(15,23,42,.14);
-        z-index:20;max-height:220px;display:flex;flex-direction:column;overflow:hidden;}
-  .menu.up{top:auto;bottom:calc(100% + 4px);}
+    background:#fff !important;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  .picker-btn .ph{color:var(--ink-3);}
+  .picker-btn .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;}
+  .picker-btn .car{color:var(--ink-3);font-size:9px;flex:0 0 auto;transition:transform .12s;}
+  .picker-btn.open .car{transform:rotate(180deg);}
+
+  .menu{position:absolute;top:calc(100% + 5px);left:0;right:0;background:#fff;
+    border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow-md);
+    z-index:20;max-height:230px;display:flex;flex-direction:column;overflow:hidden;}
+  .menu.up{top:auto;bottom:calc(100% + 5px);}
   .menu.hide{display:none;}
-  .menu input{font:inherit;font-size:11px;border:none;border-bottom:1px solid var(--line);
-              padding:7px 8px;outline:none;}
-  .menu .opts{overflow-y:auto;}
-  .opt{display:flex;align-items:center;gap:7px;padding:6px 8px;cursor:pointer;background:#fff;}
-  .opt:hover{background:#F8FAFC;}
-  .opt:active,.opt.active{background:#EFF5FF;}
+  .menu input{font:inherit;font-size:11px;border:none;border-bottom:1px solid var(--line-soft);
+    padding:9px 10px;outline:none;background:var(--surface-2);}
+  .menu .opts{overflow-y:auto;padding:4px;}
+  .opt{display:flex;align-items:center;gap:8px;padding:6px 7px;cursor:pointer;border-radius:7px;}
+  .opt:hover{background:var(--surface-2);}
+  .opt:active,.opt.active{background:var(--accent-soft);}
   .opt .lbl{font-family:var(--mono);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .opt .empty{padding:10px 8px;color:var(--ink2);font-size:11px;}
-  .sw.split{background:none;padding:0;overflow:hidden;display:flex;}
-  .sw.split i{flex:1;display:block;}
-  .err{background:#FEF2F2;color:#B91C1C;border-radius:7px;padding:10px;font-size:11px;
-       margin-top:12px;display:none;}
-  .err.show{display:block;}
-  .foot{margin-top:14px;text-align:center;}
-  .foot a{color:var(--ink2);font-size:10px;cursor:pointer;text-decoration:none;}
-  .foot a:hover{color:var(--ink);}
+  .opt .empty{padding:10px 8px;color:var(--ink-2);font-size:11px;}
+
+  /* ---- accordion (Hidden / Diagnostics) ---- */
+  .accordion{margin-top:14px;border-top:1px solid var(--line-soft);padding-top:10px;}
+  .accordion-head{width:100%;display:flex;align-items:center;gap:7px;padding:2px 0;
+    background:none;border:none;font:inherit;text-align:left;color:var(--ink-2);}
+  .accordion-head:hover{color:var(--ink);}
+  .accordion-head .t{font-size:11.5px;font-weight:700;}
+  .accordion-head .chev{margin-left:auto;font-size:9px;color:var(--ink-3);transition:transform .18s;}
+  .accordion.open .chev{transform:rotate(180deg);}
+  .accordion-body{max-height:0;overflow:hidden;transition:max-height .22s ease;}
+  .accordion-body-in{padding-top:9px;}
+
+  /* ---- diagnostics ---- */
+  .diag-block{margin-bottom:10px;}
+  .diag-block:last-child{margin-bottom:0;}
+  .diag-block > p{font-size:10.5px;color:var(--ink-3);margin:0 0 5px;}
+  .diag-log{font-family:var(--mono);font-size:9.5px;line-height:1.7;color:var(--ink-2);
+    background:var(--surface-2);border-radius:var(--r-sm);padding:8px;max-height:160px;overflow-y:auto;}
+  .diag-log b{color:var(--ink);}
+
+  /* ---- footer ---- */
+  .app-foot{margin-top:16px;padding-top:12px;border-top:1px solid var(--line-soft);text-align:center;}
+  .app-foot a{color:var(--ink-3);font-size:10px;cursor:pointer;text-decoration:none;}
+  .app-foot a:hover{color:var(--ink-2);text-decoration:underline;}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Xemantics</h1>
-  <p class="sub">Converts primitives to semantic tokens.</p>
+  <div class="app-head">
+    <h1>Xemantics</h1>
+    <p class="sub">Converts primitives to semantic tokens</p>
+  </div>
 
-  <button id="go" disabled>Apply to selection</button>
+  <button id="go" class="btn-primary" disabled>Apply to selection</button>
   <p class="hint" id="hint">Select a frame</p>
 
+  <div id="err" class="banner banner-danger"></div>
+
   <div id="out" class="out"></div>
-  <div id="err" class="err"></div>
-  <div class="foot"><a id="clr">Clear saved mappings</a></div>
+
+  <div class="app-foot"><a id="clr">Clear saved mappings</a></div>
 </div>
 <script>
 var $ = function(id){ return document.getElementById(id); };
@@ -102,9 +184,7 @@ send({type:"check"});
 /**
  * Window "hugs" its actual content instead of sitting at a fixed height
  * with a big blank area below a short empty state — resize on load and
- * again after every render that can change content height (results
- * appearing, an error showing). Clamped in code.js too, but clamp here
- * as well so we never ask for something absurd.
+ * again after every render/expand that can change content height.
  */
 function fitWindow(){
   var h = Math.max(160, Math.min(640, document.body.scrollHeight));
@@ -112,9 +192,6 @@ function fitWindow(){
 }
 window.addEventListener('load', fitWindow);
 setTimeout(fitWindow, 0);
-// "toggle" doesn't bubble, but a capture-phase listener on document still
-// sees it for any <details> (the Diagnostics section) opened/closed later.
-document.addEventListener('toggle', fitWindow, true);
 
 function esc(s){ return String(s).replace(/[<>&"]/g, function(c){
   return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
@@ -134,88 +211,173 @@ function tokenByName(name){
   return null;
 }
 
-function renderSection(title, hint, list, kind){
-  if(!list.length) return '';
-  var h = '<div class="sec"><h2>'+esc(title)+'</h2><p>'+esc(hint)+'</p>';
-  list.forEach(function(u, i){
-    var id = kind+i;
-    var sugg = u.suggested ? tokenByName(u.suggested) : null;
-    var btnInner = sugg
-      ? swatchHtml(sugg.light, sugg.dark) + '<span class="lbl">'+esc(sugg.name)+'</span>' +
-        '<span class="tag">Suggested</span><span class="car">▾</span>'
-      : '<span class="ph">Choose a token…</span><span class="car">▾</span>';
-    h += '<div class="card" id="card-'+id+'">' +
-           '<div class="ch">' +
-             swatchHtml(u.hex, u.hex, 'data-i="'+id+'"') +
-             '<div class="meta">' +
-               '<div class="t">'+esc(u.primitive)+'</div>' +
-               '<div class="s">'+esc(u.prop)+' · '+esc(u.type)+' · '+u.count+' layer'+(u.count>1?'s':'')+'</div>' +
-             '</div>' +
-             '<button class="sm" data-sel="'+id+'">Select</button>' +
-           '</div>' +
-           '<div class="ctl">' +
-             '<div class="picker" data-picker="'+id+'">' +
-               '<button type="button" class="picker-btn" data-picker-btn="'+id+'"'+(sugg?' data-value="'+esc(sugg.name)+'"':'')+'>' +
-                 btnInner +
-               '</button>' +
-               '<div class="menu hide" data-menu="'+id+'">' +
-                 '<input type="text" placeholder="Search tokens…" data-search="'+id+'">' +
-                 '<div class="opts" data-opts="'+id+'"></div>' +
-               '</div>' +
-             '</div>' +
-             '<button class="sm" data-bind="'+id+'"'+(sugg?' data-chosen="'+esc(sugg.name)+'"':' disabled')+'>Map</button>' +
-           '</div>' +
-         '</div>';
-  });
-  h += '</div>';
-  return h;
+/* ---------------------------------------------------------------------
+ * "To map" — Needs mapping + Unrecognised colour, merged into one list
+ * (same card shape either way), each tagged with why it's here instead
+ * of split into two separately-titled sections.
+ * ------------------------------------------------------------------- */
+function pickerCardHtml(id, u, originTag){
+  var sugg = u.suggested ? tokenByName(u.suggested) : null;
+  var btnInner = sugg
+    ? swatchHtml(sugg.light, sugg.dark) + '<span class="lbl">'+esc(sugg.name)+'</span>' +
+      '<span class="tag tag-accent">Suggested</span><span class="car">▾</span>'
+    : '<span class="ph">Choose a token…</span><span class="car">▾</span>';
+  return '<div class="card" id="card-'+id+'">' +
+      '<div class="card-top">' +
+        swatchHtml(u.hex, u.hex, 'data-i="'+id+'"') +
+        '<div class="card-meta">' +
+          '<div class="card-title">'+esc(u.primitive)+'</div>' +
+          '<div class="card-sub">'+esc(u.prop)+' · '+esc(u.type)+' · '+u.count+' layer'+(u.count>1?'s':'')+
+            (originTag ? ' '+originTag : '')+(u.partial ? ' <span class="tag tag-amber">partially fixed</span>' : '')+
+          '</div>' +
+        '</div>' +
+        '<button class="btn-ghost" data-sel="'+id+'">Select</button>' +
+      '</div>' +
+      '<div class="card-ctl">' +
+        '<div class="picker" data-picker="'+id+'">' +
+          '<button type="button" class="picker-btn" data-picker-btn="'+id+'"'+(sugg?' data-value="'+esc(sugg.name)+'"':'')+'>' +
+            btnInner +
+          '</button>' +
+          '<div class="menu hide" data-menu="'+id+'">' +
+            '<input type="text" placeholder="Search tokens…" data-search="'+id+'">' +
+            '<div class="opts" data-opts="'+id+'"></div>' +
+          '</div>' +
+        '</div>' +
+        '<button class="btn-map" data-bind="'+id+'"'+(sugg?' data-chosen="'+esc(sugg.name)+'"':' disabled')+'>Map</button>' +
+      '</div>' +
+    '</div>';
 }
 
-function renderUnmapped(list){
-  return renderSection('Needs mapping',
-    'Click a swatch to select those layers on canvas, then choose a token.',
-    list, 'u');
+function renderToMap(unmapped, unknown){
+  var items = unmapped.map(function(u){ return { u:u, tag:'<span class="tag tag-slate">Primitive</span>' }; })
+    .concat(unknown.map(function(u){ return { u:u, tag:'<span class="tag tag-amber">Unrecognised</span>' }; }));
+  if(!items.length) return '';
+  items.sort(function(a,b){ return b.u.count - a.u.count; });
+  var h = '<div class="group"><div class="group-head"><h2>To map</h2><span class="badge">'+items.length+'</span></div>' +
+    '<p class="group-hint">Click a swatch to select those layers on canvas, then choose a token.</p>' +
+    '<div class="card-list">';
+  items.forEach(function(it, i){ h += pickerCardHtml('m'+i, it.u, it.tag); });
+  h += '</div></div>';
+  return h;
 }
-function renderUnknown(list){
-  return renderSection('Unrecognised colour',
-    "Doesn't match any KoinX primitive — confirm it's intentional (e.g. artwork), or map it if it should be a token.",
-    list, 'x');
+/** Rebuilds the merged list in the same order renderToMap() used, so ids line up for wiring. */
+function toMapMerged(unmapped, unknown){
+  return unmapped.concat(unknown).sort(function(a,b){ return b.count - a.count; });
 }
-function renderHidden(list){
-  return renderSection('Hidden layers',
-    "These layers are hidden in Figma (or inside a hidden frame/group) — kept separate so they don't clutter the lists above. Map them now if you want to get ahead of it, or leave them for whenever they're shown again.",
-    list, 'h');
+
+function wirePickerCards(list, kind){
+  list.forEach(function(u, i){
+    var id = kind+i;
+    var sw = document.querySelector('.sw[data-i="'+id+'"]');
+    var sel = document.querySelector('button[data-sel="'+id+'"]');
+    var bind = document.querySelector('button[data-bind="'+id+'"]');
+    var pbtn = document.querySelector('button[data-picker-btn="'+id+'"]');
+    var card = $("card-"+id);
+    function highlight(){ send({type:"highlight", ids:u.ids}); markSelected(card); }
+    if(sw) sw.onclick = highlight;
+    if(sel) sel.onclick = highlight;
+
+    wirePicker(id, function(tokenName){
+      bind.disabled = false;
+      bind.setAttribute('data-chosen', tokenName);
+    });
+
+    bind.onclick = function(){
+      var tokenName = bind.getAttribute('data-chosen');
+      if(!tokenName){ pbtn.click(); return; }
+      send({type:"bind", sig:u.sig, token:tokenName, ids:u.ids});
+      var c = $("card-"+id); if(c) c.classList.add("done");
+      bind.textContent = "Mapped"; bind.disabled = true; bind.classList.add("done");
+    };
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * Mixed-fill layers — no single colour to offer a picker for, just a
+ * Select button to find and fix by hand in Figma.
+ * ------------------------------------------------------------------- */
+function mixedCardHtml(id, u, hiddenTag){
+  return '<div class="card" id="card-'+id+'">' +
+      '<div class="card-top">' +
+        '<div class="card-meta">' +
+          '<div class="card-title">'+esc(u.layer)+'</div>' +
+          '<div class="card-sub">'+esc(u.prop)+' · '+esc(u.type)+
+            (u.partial ? ' <span class="tag tag-amber">partially fixed</span>' : '')+
+            (hiddenTag ? ' '+hiddenTag : '')+
+          '</div>' +
+        '</div>' +
+        '<button class="btn-ghost" data-mixed-sel="'+id+'">Select</button>' +
+      '</div>' +
+    '</div>';
+}
+function renderMixedGroup(list){
+  if(!list.length) return '';
+  var h = '<div class="group"><div class="group-head"><h2>Mixed fills</h2><span class="badge">'+list.length+'</span></div>' +
+    '<p class="group-hint">At least one colour segment isn\'t recognised — resolvable segments are already fixed; this needs a human look.</p>' +
+    '<div class="card-list">';
+  list.forEach(function(u, i){ h += mixedCardHtml('mx'+i, u); });
+  h += '</div></div>';
+  return h;
+}
+function wireMixedCards(list, kind){
+  list.forEach(function(u, i){
+    var id = kind+i;
+    var sel = document.querySelector('button[data-mixed-sel="'+id+'"]');
+    var card = $("card-"+id);
+    if(sel) sel.onclick = function(){ send({type:"highlight", ids:[u.id]}); markSelected(card); };
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * Accordion (Hidden layers / Diagnostics) — collapsed by default,
+ * animated open/close, resizes the window as it expands.
+ * ------------------------------------------------------------------- */
+function accordionHtml(key, title, badgeCount, innerHtml){
+  return '<div class="accordion" data-acc="'+key+'">' +
+      '<button type="button" class="accordion-head" data-acc-head="'+key+'">' +
+        '<span class="t">'+esc(title)+(badgeCount ? ' <span class="badge">'+badgeCount+'</span>' : '')+'</span>' +
+        '<span class="chev">▾</span>' +
+      '</button>' +
+      '<div class="accordion-body" data-acc-body="'+key+'"><div class="accordion-body-in">'+innerHtml+'</div></div>' +
+    '</div>';
+}
+function wireAccordion(key){
+  var root = document.querySelector('.accordion[data-acc="'+key+'"]');
+  if(!root) return;
+  var head = document.querySelector('button[data-acc-head="'+key+'"]');
+  var body = document.querySelector('.accordion-body[data-acc-body="'+key+'"]');
+  head.onclick = function(){
+    var opening = !root.classList.contains('open');
+    root.classList.toggle('open', opening);
+    body.style.maxHeight = opening ? body.scrollHeight + 'px' : '0px';
+    var done = function(){ fitWindow(); body.removeEventListener('transitionend', done); };
+    body.addEventListener('transitionend', done);
+  };
 }
 
 /**
  * Debug view for layers that were silently skipped — either treated as
- * "already semantic" (with the name/collection that triggered it) or bound
- * to a variable id that couldn't be resolved to a name at all. Collapsed
- * by default; expand to read off exactly why a specific colour didn't
- * convert or get flagged.
+ * "already semantic", bound to an unresolvable variable, or dark content
+ * that didn't get forced to a light colour. Collapsed by default.
  */
-function renderDiagnostics(alreadySemanticSample, unresolvedVarSample, strongBgSample){
-  if(!alreadySemanticSample.length && !unresolvedVarSample.length && !(strongBgSample && strongBgSample.length)) return '';
-  var h = '<details class="sec"><summary style="cursor:pointer;font-weight:600;font-size:12px;">Diagnostics (why a colour was skipped)</summary>';
+function diagnosticsInnerHtml(alreadySemanticSample, unresolvedVarSample, strongBgSample){
+  var h = '';
   if(alreadySemanticSample.length){
-    h += '<p style="margin:8px 0 4px;font-size:11px;color:var(--ink2);">Treated as "already semantic" — bound name/collection matched the skip check:</p>';
-    h += '<div style="font-family:var(--mono);font-size:10px;line-height:1.6;">';
+    h += '<div class="diag-block"><p>Treated as "already semantic" — bound name/collection matched the skip check:</p><div class="diag-log">';
     alreadySemanticSample.forEach(function(s){
       h += esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — name: <b>' + esc(s.name) + '</b> — collection: <b>' + esc(s.collection || '(none)') + '</b><br>';
     });
-    h += '</div>';
+    h += '</div></div>';
   }
   if(unresolvedVarSample.length){
-    h += '<p style="margin:10px 0 4px;font-size:11px;color:var(--ink2);">Bound to a variable that could not be resolved to a name at all:</p>';
-    h += '<div style="font-family:var(--mono);font-size:10px;line-height:1.6;">';
+    h += '<div class="diag-block"><p>Bound to a variable that could not be resolved to a name at all:</p><div class="diag-log">';
     unresolvedVarSample.forEach(function(s){
       h += esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — hex: <b>' + esc(s.hex) + '</b><br>';
     });
-    h += '</div>';
+    h += '</div></div>';
   }
   if(strongBgSample && strongBgSample.length){
-    h += '<p style="margin:10px 0 4px;font-size:11px;color:var(--ink2);">Dark content that did NOT get forced to a light colour — exactly what the ancestor walk saw, level by level:</p>';
-    h += '<div style="font-family:var(--mono);font-size:10px;line-height:1.6;">';
+    h += '<div class="diag-block"><p>Dark content that did NOT get forced to a light colour — what the ancestor walk saw, level by level:</p><div class="diag-log">';
     strongBgSample.forEach(function(s){
       h += '<div style="margin-bottom:6px;"><b>' + esc(s.layer) + '</b> — ' + esc(s.prop) + '·' + esc(s.type) + ' — own hex: ' + esc(s.hex) + '<br>';
       s.trace.forEach(function(t){
@@ -227,19 +389,9 @@ function renderDiagnostics(alreadySemanticSample, unresolvedVarSample, strongBgS
       });
       h += '</div>';
     });
-    h += '</div>';
+    h += '</div></div>';
   }
-  h += '</details>';
   return h;
-}
-
-function optionsHtml(id){
-  return TOKENS.map(function(t, ti){
-    return '<div class="opt" data-opt="'+id+'" data-tok="'+ti+'">' +
-             swatchHtml(t.light, t.dark) +
-             '<span class="lbl">'+esc(t.name)+'</span>' +
-           '</div>';
-  }).join('') || '<div class="empty">No semantic tokens found</div>';
 }
 
 function closeMenu(){
@@ -257,6 +409,15 @@ function markSelected(cardEl){
   if(selectedCard) selectedCard.classList.remove('selected');
   selectedCard = cardEl || null;
   if(selectedCard) selectedCard.classList.add('selected');
+}
+
+function optionsHtml(id){
+  return TOKENS.map(function(t, ti){
+    return '<div class="opt" data-opt="'+id+'" data-tok="'+ti+'">' +
+             swatchHtml(t.light, t.dark) +
+             '<span class="lbl">'+esc(t.name)+'</span>' +
+           '</div>';
+  }).join('') || '<div class="empty">No semantic tokens found</div>';
 }
 
 function wirePicker(i, onChoose){
@@ -279,7 +440,7 @@ function wirePicker(i, onChoose){
       // button instead whenever there isn't enough room below.
       var r = btn.getBoundingClientRect();
       var spaceBelow = window.innerHeight - r.bottom;
-      var needed = Math.min(220, menu.scrollHeight || 220);
+      var needed = Math.min(230, menu.scrollHeight || 230);
       menu.classList.toggle('up', spaceBelow < needed && r.top > spaceBelow);
       openMenu = i; search.value=''; filterOpts(); search.focus();
     }
@@ -309,70 +470,6 @@ function wirePicker(i, onChoose){
 
 document.addEventListener('click', closeMenu);
 
-function wire(list, kind){
-  list.forEach(function(u, i){
-    var id = kind+i;
-    var sw = document.querySelector('.sw[data-i="'+id+'"]');
-    var sel = document.querySelector('button[data-sel="'+id+'"]');
-    var bind = document.querySelector('button[data-bind="'+id+'"]');
-    var pbtn = document.querySelector('button[data-picker-btn="'+id+'"]');
-    var card = $("card-"+id);
-    function highlight(){ send({type:"highlight", ids:u.ids}); markSelected(card); }
-    if(sw) sw.onclick = highlight;
-    if(sel) sel.onclick = highlight;
-
-    wirePicker(id, function(tokenName){
-      bind.disabled = false;
-      bind.setAttribute('data-chosen', tokenName);
-    });
-
-    bind.onclick = function(){
-      var tokenName = bind.getAttribute('data-chosen');
-      if(!tokenName){ pbtn.click(); return; }
-      send({type:"bind", sig:u.sig, token:tokenName, ids:u.ids});
-      var c = $("card-"+id); if(c) c.classList.add("done");
-      bind.textContent = "Mapped"; bind.disabled = true;
-    };
-  });
-}
-
-/**
- * Layers with mixed fills where at least one character-range segment
- * couldn't be resolved to a token at all — main.js's resolveMixedTextFill()
- * already handles the case where every segment DOES resolve (each gets its
- * own correct token, even when segments differ), so what's left here is
- * genuinely unresolvable, not just "more than one colour". No single
- * colour to offer a token picker for, so this just lists them with a
- * "Select" button to find and fix by hand in Figma.
- */
-function renderMixedFills(list, kind, title, hint){
-  if(!list.length) return '';
-  kind = kind || 'mx';
-  var h = '<div class="sec"><h2>'+esc(title || 'Mixed-fill layers')+'</h2>' +
-          '<p>'+(hint || 'Multiple colours on this layer, and at least one of them isn\'t a recognised KoinX colour — each colour segment resolves independently, so any resolvable segments here are already fixed. What\'s left needs a human look. Click Select to find and fix it in Figma.')+'</p>';
-  list.forEach(function(u, i){
-    h += '<div class="card" id="card-'+kind+i+'">' +
-           '<div class="ch">' +
-             '<div class="meta">' +
-               '<div class="t">'+esc(u.layer)+(u.partial ? ' <span class="s">(partially fixed)</span>' : '')+'</div>' +
-               '<div class="s">'+esc(u.prop)+' · '+esc(u.type)+'</div>' +
-             '</div>' +
-             '<button class="sm" data-mixed-sel="'+kind+i+'">Select</button>' +
-           '</div>' +
-         '</div>';
-  });
-  h += '</div>';
-  return h;
-}
-function wireMixedFills(list, kind){
-  kind = kind || 'mx';
-  list.forEach(function(u, i){
-    var sel = document.querySelector('button[data-mixed-sel="'+kind+i+'"]');
-    var card = $("card-"+kind+i);
-    if(sel) sel.onclick = function(){ send({type:"highlight", ids:[u.id]}); markSelected(card); };
-  });
-}
-
 onmessage = function(e){
   var m = e.data.pluginMessage; if(!m) return;
 
@@ -395,29 +492,48 @@ onmessage = function(e){
   if(m.type === "done"){
     TOKENS = m.tokens || [];
     $("go").disabled = false; $("go").textContent = "Apply to selection";
+
+    var unmapped = m.unmapped || [], unknown = m.unknown || [];
+    var mixedFills = m.mixedFills || [];
+    var hidden = m.hidden || [], hiddenMixedFills = m.hiddenMixedFills || [];
     var converted = m.applied + (m.structural||0) + (m.removed||0) + (m.mixedResolved||0);
-    var h = '<div class="big"><b>'+converted+'</b><span>layers converted</span></div>';
-    if(m.structural) h += '<div class="row"><span>Structural rule (table/label)</span><b>'+m.structural+'</b></div>';
-    if(m.removed) h += '<div class="row"><span>Fill/stroke removed</span><b>'+m.removed+'</b></div>';
-    if(m.mixedResolved) h += '<div class="row"><span>Mixed-fill (auto-resolved)</span><b>'+m.mixedResolved+'</b></div>';
-    h += '<div class="row"><span>Already semantic</span><b>'+m.alreadySemantic+'</b></div>';
-    if(m.preserved) h += '<div class="row"><span>Preserved (kept as-is)</span><b>'+m.preserved+'</b></div>';
-    if(m.mixedFills && m.mixedFills.length) h += '<div class="row"><span>Mixed-fill layers (need review)</span><b>'+m.mixedFills.length+'</b></div>';
-    var hiddenCount = (m.hidden || []).length + (m.hiddenMixedFills || []).length;
-    if(hiddenCount) h += '<div class="row"><span>Hidden layers (skipped from lists above)</span><b>'+hiddenCount+'</b></div>';
-    h += renderUnmapped(m.unmapped || []);
-    h += renderUnknown(m.unknown || []);
-    h += renderMixedFills(m.mixedFills || []);
-    h += renderHidden(m.hidden || []);
-    h += renderMixedFills(m.hiddenMixedFills || [], 'hmx', 'Hidden layers (mixed fill)',
-      'Same as Mixed-fill layers above, but hidden in Figma right now — kept separate for the same reason.');
-    h += renderDiagnostics(m.alreadySemanticSample || [], m.unresolvedVarSample || [], m.strongBgSample || []);
+
+    var h = '<div class="result"><div class="result-count"><b>'+converted+'</b><span>layers converted</span></div>';
+    var chips = [];
+    if(m.structural) chips.push('<span class="chip"><b>'+m.structural+'</b> structural</span>');
+    if(m.removed) chips.push('<span class="chip"><b>'+m.removed+'</b> removed</span>');
+    if(m.mixedResolved) chips.push('<span class="chip"><b>'+m.mixedResolved+'</b> mixed-fill</span>');
+    chips.push('<span class="chip"><b>'+m.alreadySemantic+'</b> already semantic</span>');
+    if(m.preserved) chips.push('<span class="chip"><b>'+m.preserved+'</b> preserved</span>');
+    if(chips.length) h += '<div class="chips">'+chips.join('')+'</div>';
+    h += '</div>';
+
+    h += renderToMap(unmapped, unknown);
+    h += renderMixedGroup(mixedFills);
+
+    var hiddenTotal = hidden.length + hiddenMixedFills.length;
+    if(hiddenTotal){
+      var hiddenInner = '<div class="card-list">';
+      hidden.forEach(function(u, i){ hiddenInner += pickerCardHtml('h'+i, u, null); });
+      hiddenMixedFills.forEach(function(u, i){ hiddenInner += mixedCardHtml('hmx'+i, u, null); });
+      hiddenInner += '</div>';
+      h += accordionHtml('hidden', 'Hidden layers', hiddenTotal, hiddenInner);
+    }
+
+    var diagInner = diagnosticsInnerHtml(m.alreadySemanticSample || [], m.unresolvedVarSample || [], m.strongBgSample || []);
+    if(diagInner) h += accordionHtml('diag', 'Diagnostics', null, diagInner);
+
     $("out").innerHTML = h; $("out").classList.add("show");
-    wire(m.unmapped || [], 'u');
-    wire(m.unknown || [], 'x');
-    wireMixedFills(m.mixedFills || []);
-    wire(m.hidden || [], 'h');
-    wireMixedFills(m.hiddenMixedFills || [], 'hmx');
+
+    wirePickerCards(toMapMerged(unmapped, unknown), 'm');
+    wireMixedCards(mixedFills, 'mx');
+    if(hiddenTotal){
+      wirePickerCards(hidden, 'h');
+      wireMixedCards(hiddenMixedFills, 'hmx');
+      wireAccordion('hidden');
+    }
+    if(diagInner) wireAccordion('diag');
+
     fitWindow();
     return;
   }
