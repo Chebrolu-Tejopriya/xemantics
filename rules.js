@@ -340,6 +340,29 @@ const STRONG_BG_SEMANTICS = {
 const TEXT_ON_STRONG_BG_SEMANTIC = "Content/content-absolute-white";
 
 /**
+ * Below this perceptual brightness (0-255), a background counts as
+ * "strong" even if it isn't one of the specific brand/status colours
+ * above — a dark-theme page/card background, for instance. Every
+ * confirmed live dark-mode surface (Surface/surface-primary #0A0A12,
+ * surface-raised #171A26, surface-secondary #212538) scores under 40;
+ * every existing STRONG_BG_PRIMITIVES colour scores 77+ (Green/09(Base),
+ * the dimmest of them, scores ~129) — 50 sits comfortably in the gap
+ * between the two, so this can't misfire on the colours already handled
+ * by name above.
+ */
+const STRONG_BG_DARK_THRESHOLD = 50;
+
+/**
+ * How many ancestor levels onStrongBackground() will walk looking for the
+ * nearest one with an actual visible fill. Generous on purpose — plain
+ * auto-layout wrapper frames (no fill of their own) are common between an
+ * icon/label and the real background several levels up; confirmed live,
+ * one case needed 5 levels. Cheap to check either way, since the walk
+ * stops at the FIRST fill-bearing ancestor regardless of how deep that is.
+ */
+const STRONG_BG_MAX_DEPTH = 10;
+
+/**
  * The inverse case: text ALREADY bound to Content/content-on-solid, but NOT
  * actually sitting on a strong/solid background (per STRONG_BG_SEMANTICS /
  * STRONG_BG_PRIMITIVES above), is almost certainly wrong and needs

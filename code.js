@@ -340,6 +340,29 @@ const STRONG_BG_SEMANTICS = {
 const TEXT_ON_STRONG_BG_SEMANTIC = "Content/content-absolute-white";
 
 /**
+ * Below this perceptual brightness (0-255), a background counts as
+ * "strong" even if it isn't one of the specific brand/status colours
+ * above — a dark-theme page/card background, for instance. Every
+ * confirmed live dark-mode surface (Surface/surface-primary #0A0A12,
+ * surface-raised #171A26, surface-secondary #212538) scores under 40;
+ * every existing STRONG_BG_PRIMITIVES colour scores 77+ (Green/09(Base),
+ * the dimmest of them, scores ~129) — 50 sits comfortably in the gap
+ * between the two, so this can't misfire on the colours already handled
+ * by name above.
+ */
+const STRONG_BG_DARK_THRESHOLD = 50;
+
+/**
+ * How many ancestor levels onStrongBackground() will walk looking for the
+ * nearest one with an actual visible fill. Generous on purpose — plain
+ * auto-layout wrapper frames (no fill of their own) are common between an
+ * icon/label and the real background several levels up; confirmed live,
+ * one case needed 5 levels. Cheap to check either way, since the walk
+ * stops at the FIRST fill-bearing ancestor regardless of how deep that is.
+ */
+const STRONG_BG_MAX_DEPTH = 10;
+
+/**
  * The inverse case: text ALREADY bound to Content/content-on-solid, but NOT
  * actually sitting on a strong/solid background (per STRONG_BG_SEMANTICS /
  * STRONG_BG_PRIMITIVES above), is almost certainly wrong and needs
@@ -793,30 +816,77 @@ function matchesRemovePattern(node, resolved) {
  * scan(), since walk() visits every node in the tree (not just text), so an
  * ancestor's own fill binding was already collected and resolved.
  */
-function ownFillIsStrongBg(node, resolved, HEX_INDEX) {
-  if (!node || !("fills" in node)) return false;
-  const solid = firstSolid(node.fills);
-  if (!solid) return false;
-  const name = boundNameFor(node, "fills", resolved);
-  if (name) {
-    if (STRONG_BG_SEMANTICS[name]) return true;
-    const prim = normalisePrim(name, hex(solid.color));
-    return !!(prim && STRONG_BG_PRIMITIVES[prim]);
-  }
-  const prim = HEX_INDEX[hex(solid.color)];
-  return !!(prim && STRONG_BG_PRIMITIVES[prim]);
+/**
+ * Cheap perceptual brightness (0-255, no gamma correction — this is a
+ * background/foreground heuristic, not a WCAG contrast calculation).
+ * Confirmed live: Green/09(Base) (#0FBA83), one of the existing strong
+ * brand/status colours, scores ~129 here — comfortably above
+ * STRONG_BG_DARK_THRESHOLD, so the darkness check below can never
+ * duplicate or conflict with the existing name/primitive list; it only
+ * catches colours meaningfully darker than any of those.
+ */
+function perceptualBrightness(hexColor) {
+  const i = parseInt(hexColor.slice(1), 16);
+  const r = (i >> 16) & 255, g = (i >> 8) & 255, b = i & 255;
+  return (r * 299 + g * 587 + b * 114) / 1000;
+}
+function isVeryDark(hexColor) {
+  return perceptualBrightness(hexColor) < STRONG_BG_DARK_THRESHOLD;
 }
 
 /**
- * True if `node` (text or an icon glyph) sits directly on, or a couple of
- * wrapper frames inside, a strong brand/status background — see
- * STRONG_BG_PRIMITIVES / STRONG_BG_SEMANTICS in rules.js for why this needs
- * to force an absolute token.
+ * True if `node` has an actual visible solid fill of its own (as opposed
+ * to being transparent/fill-less, which is the common case for a plain
+ * auto-layout wrapper frame — those don't represent a "background" at
+ * all, and checking one would be checking nothing).
+ */
+function hasOwnVisibleFill(node) {
+  return !!(node && "fills" in node && firstSolid(node.fills));
+}
+
+/**
+ * Whether a node WITH a confirmed visible fill counts as "strong" — either
+ * one of the specific bright brand/status colours (STRONG_BG_PRIMITIVES /
+ * STRONG_BG_SEMANTICS — badges, pills, solid buttons), or, more generally,
+ * any colour dark enough on its own that pure black content on top of it
+ * would be unreadable (a dark-theme page/card background, say). The
+ * second check is by actual rendered brightness, not name, since the SAME
+ * semantic name (e.g. Surface/surface-primary) means a pale colour in
+ * light mode and a near-black one in dark mode — a name-only list can't
+ * tell those apart, only the real colour can.
+ */
+function ownFillIsStrongBg(node, resolved, HEX_INDEX) {
+  const solid = firstSolid(node.fills);
+  const renderedHex = hex(solid.color);
+  const name = boundNameFor(node, "fills", resolved);
+  if (name) {
+    if (STRONG_BG_SEMANTICS[name]) return true;
+    const prim = normalisePrim(name, renderedHex);
+    if (prim && STRONG_BG_PRIMITIVES[prim]) return true;
+  } else {
+    const prim = HEX_INDEX[renderedHex];
+    if (prim && STRONG_BG_PRIMITIVES[prim]) return true;
+  }
+  return isVeryDark(renderedHex);
+}
+
+/**
+ * True if `node` (text or an icon glyph) sits on a strong/dark background
+ * — walks up to the NEAREST ancestor that actually has a visible fill of
+ * its own (skipping plain fill-less wrapper frames, which are extremely
+ * common for an icon+label row like this) and judges by that one alone,
+ * rather than checking a fixed number of levels regardless of whether
+ * they're meaningful. Confirmed live: an icon glyph's nearest fill-bearing
+ * ancestor was 5 frames up (three plain auto-layout wrappers in between
+ * had no fill of their own) — the previous fixed depth of 3 could never
+ * reach it. Stopping at the first real fill also means a normal light
+ * card sitting on top of a dark/coloured page correctly does NOT force
+ * its own content to white just because the page underneath is dark.
  */
 function onStrongBackground(node, resolved, HEX_INDEX) {
   let n = node.parent, depth = 0;
-  while (n && depth < 3) {
-    if (ownFillIsStrongBg(n, resolved, HEX_INDEX)) return true;
+  while (n && depth < STRONG_BG_MAX_DEPTH) {
+    if (hasOwnVisibleFill(n)) return ownFillIsStrongBg(n, resolved, HEX_INDEX);
     n = n.parent;
     depth++;
   }
