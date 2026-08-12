@@ -146,12 +146,17 @@
   .accordion-body-in{padding-top:9px;}
 
   /* ---- diagnostics ---- */
+  .diag-filter{width:100%;font:inherit;font-size:11px;padding:7px 9px;border-radius:var(--r-sm);
+    border:1px solid var(--line);background:var(--surface-2);outline:none;margin-bottom:10px;}
+  .diag-filter:focus{border-color:var(--accent);background:#fff;}
   .diag-block{margin-bottom:10px;}
   .diag-block:last-child{margin-bottom:0;}
   .diag-block > p{font-size:10.5px;color:var(--ink-3);margin:0 0 5px;}
   .diag-log{font-family:var(--mono);font-size:9.5px;line-height:1.7;color:var(--ink-2);
     background:var(--surface-2);border-radius:var(--r-sm);padding:8px;max-height:160px;overflow-y:auto;}
   .diag-log b{color:var(--ink);}
+  .diag-row{margin-bottom:5px;}
+  .diag-row:last-child{margin-bottom:0;}
 
   /* ---- footer ---- */
   .app-foot{margin-top:16px;padding-top:12px;border-top:1px solid var(--line-soft);text-align:center;}
@@ -380,25 +385,36 @@ function wireAccordion(key){
  * that didn't get forced to a light colour. Collapsed by default.
  */
 function diagnosticsInnerHtml(alreadySemanticSample, unresolvedVarSample, strongBgSample){
-  var h = '';
+  var any = alreadySemanticSample.length || unresolvedVarSample.length || (strongBgSample && strongBgSample.length);
+  if(!any) return '';
+
+  // A run over a big file can produce dozens of entries across three
+  // logs — confirmed live: finding one specific layer meant scrolling
+  // and screenshotting the whole thing by hand. One filter narrows all
+  // three logs at once by layer name.
+  var h = '<input type="text" class="diag-filter" id="diagFilter" placeholder="Filter by layer name…">';
+  h += '<div id="diagBlocks">';
+
   if(alreadySemanticSample.length){
     h += '<div class="diag-block"><p>Treated as "already semantic" — bound name/collection matched the skip check:</p><div class="diag-log">';
     alreadySemanticSample.forEach(function(s){
-      h += esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — name: <b>' + esc(s.name) + '</b> — collection: <b>' + esc(s.collection || '(none)') + '</b><br>';
+      h += '<div class="diag-row" data-layer="'+esc((s.layer||'').toLowerCase())+'">' +
+        esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — name: <b>' + esc(s.name) + '</b> — collection: <b>' + esc(s.collection || '(none)') + '</b></div>';
     });
     h += '</div></div>';
   }
   if(unresolvedVarSample.length){
     h += '<div class="diag-block"><p>Bound to a variable that could not be resolved to a name at all:</p><div class="diag-log">';
     unresolvedVarSample.forEach(function(s){
-      h += esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — hex: <b>' + esc(s.hex) + '</b><br>';
+      h += '<div class="diag-row" data-layer="'+esc((s.layer||'').toLowerCase())+'">' +
+        esc(s.layer) + ' — ' + esc(s.prop) + '·' + esc(s.type) + ' — hex: <b>' + esc(s.hex) + '</b></div>';
     });
     h += '</div></div>';
   }
   if(strongBgSample && strongBgSample.length){
     h += '<div class="diag-block"><p>Dark content that did NOT get forced to a light colour — what the ancestor walk saw, level by level:</p><div class="diag-log">';
     strongBgSample.forEach(function(s){
-      h += '<div style="margin-bottom:6px;"><b>' + esc(s.layer) + '</b> — ' + esc(s.prop) + '·' + esc(s.type) + ' — own hex: ' + esc(s.hex) + '<br>';
+      h += '<div class="diag-row" data-layer="'+esc((s.layer||'').toLowerCase())+'"><b>' + esc(s.layer) + '</b> — ' + esc(s.prop) + '·' + esc(s.type) + ' — own hex: ' + esc(s.hex) + '<br>';
       s.trace.forEach(function(t){
         if(t.stopped){ h += '&nbsp;&nbsp;' + esc(t.stopped) + '<br>'; return; }
         h += '&nbsp;&nbsp;[' + t.depth + '] ' + esc(t.name) + ' (' + esc(t.type) + ') — hasFill:' + t.hasFill +
@@ -410,7 +426,25 @@ function diagnosticsInnerHtml(alreadySemanticSample, unresolvedVarSample, strong
     });
     h += '</div></div>';
   }
+  h += '</div>';
   return h;
+}
+function wireDiagFilter(){
+  var input = $("diagFilter");
+  if(!input) return;
+  input.oninput = function(){
+    var q = input.value.trim().toLowerCase();
+    document.querySelectorAll('#diagBlocks .diag-block').forEach(function(block){
+      var anyVisible = false;
+      block.querySelectorAll('.diag-row').forEach(function(row){
+        var match = !q || (row.getAttribute('data-layer')||'').indexOf(q) > -1;
+        row.style.display = match ? '' : 'none';
+        if(match) anyVisible = true;
+      });
+      block.style.display = anyVisible ? '' : 'none';
+    });
+    fitWindow();
+  };
 }
 
 function closeMenu(){
@@ -551,7 +585,7 @@ onmessage = function(e){
       wireMixedCards(hiddenMixedFills, 'hmx');
       wireAccordion('hidden');
     }
-    if(diagInner) wireAccordion('diag');
+    if(diagInner){ wireAccordion('diag'); wireDiagFilter(); }
 
     fitWindow();
     return;

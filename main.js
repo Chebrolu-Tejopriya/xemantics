@@ -994,8 +994,12 @@ async function applyTo(nodes, overrides) {
       // Diagnostic: for a layer whose OWN colour is already dark (a
       // plausible false-negative case — dark content that maybe SHOULD
       // have been forced to white but wasn't), trace exactly what the
-      // ancestor walk saw at each level. Capped so this stays cheap.
-      const wantsTrace = t.hex && isVeryDark(t.hex) && strongBgSample.length < 15;
+      // ancestor walk saw at each level. Capped so this stays cheap, but
+      // generous — confirmed live: a table full of dark text cells
+      // exhausted a cap of 15 before the scan ever reached the ONE
+      // layer (an icon in a header, scanned much later) actually being
+      // investigated, hiding it from the report entirely.
+      const wantsTrace = t.hex && isVeryDark(t.hex) && strongBgSample.length < 100;
       const traceArr = wantsTrace ? [] : null;
       const strong = onStrongBackground(t.node, resolved, HEX_INDEX, traceArr);
       if (strong) {
