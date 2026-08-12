@@ -363,6 +363,18 @@ const STRONG_BG_DARK_THRESHOLD = 50;
 const STRONG_BG_MAX_DEPTH = 10;
 
 /**
+ * An ancestor's fill below this opacity doesn't count as "the nearest real
+ * background" for onStrongBackground()'s walk — confirmed live: a
+ * default-off hover-state highlight (bound to a real colour, "pure white",
+ * but effectively invisible in the actual screenshot) sat directly between
+ * an icon and the real dark page background, and stopped the walk before
+ * it ever reached the background that actually mattered. Well below
+ * TINT_OPACITY_MAX (0.3) — a legitimate pale tint is meant to be visible
+ * and stays well clear of this cutoff.
+ */
+const MIN_MEANINGFUL_FILL_OPACITY = 0.05;
+
+/**
  * The inverse case: text ALREADY bound to Content/content-on-solid, but NOT
  * actually sitting on a strong/solid background (per STRONG_BG_SEMANTICS /
  * STRONG_BG_PRIMITIVES above), is almost certainly wrong and needs
@@ -840,8 +852,25 @@ function isVeryDark(hexColor) {
  * auto-layout wrapper frame — those don't represent a "background" at
  * all, and checking one would be checking nothing).
  */
+/**
+ * True only if `node`'s own fill is not just present but actually shows up
+ * on screen — `firstSolid()` alone only checks `visible !== false`, not
+ * opacity, so a fill that's technically there but at (near) zero opacity
+ * still passed. Confirmed live: an icon's immediate parent frame had its
+ * OWN fill bound to a real colour ("pure white"), but rendered nothing
+ * visible in the actual screenshot — almost certainly a default-off
+ * hover-state highlight — so the walk stopped right there and never
+ * reached the real dark page background several levels further up. Any
+ * legitimate low-opacity TINT (handled separately by
+ * OPACITY_TINT_REDIRECT) still has meaningfully non-zero opacity, so this
+ * cutoff is set well below that, not to be confused with it.
+ */
 function hasOwnVisibleFill(node) {
-  return !!(node && "fills" in node && firstSolid(node.fills));
+  if (!node || !("fills" in node)) return false;
+  const solid = firstSolid(node.fills);
+  if (!solid) return false;
+  const opacity = typeof solid.opacity === "number" ? solid.opacity : 1;
+  return opacity > MIN_MEANINGFUL_FILL_OPACITY;
 }
 
 /**
@@ -1775,39 +1804,52 @@ async function lightDarkModeIds(collectionId) {
 }
 
 /**
+ * One mode's raw value off a Variable — tries the collection's real Light/
+ * Dark mode id first, but if that collection can't be resolved at all,
+ * returns positionally instead of by name. Confirmed live: this is
+ * exactly what happens for an alias TARGET (a primitive variable) that was
+ * never itself explicitly imported into the file — only the top-level
+ * semantic variables go through collectSemanticVars()'s
+ * importVariableByKeyAsync, so a primitive reached only by following an
+ * alias may not have a locally resolvable collection, even though
+ * `getVariableByIdAsync` still returns its raw valuesByMode. Falling back
+ * to "first key" for BOTH light and dark (the old behaviour) collapsed
+ * them onto the same value; this instead keeps them distinct — light gets
+ * the first key, dark the second — whenever the variable genuinely has
+ * two or more.
+ */
+async function resolveModeValue(v, wantLight) {
+  if (!v || !v.valuesByMode) return undefined;
+  const modes = await lightDarkModeIds(v.variableCollectionId);
+  const modeId = wantLight ? modes.light : modes.dark;
+  let val = modeId != null ? v.valuesByMode[modeId] : undefined;
+  if (val === undefined) {
+    const keys = Object.keys(v.valuesByMode).sort();
+    if (keys.length) {
+      const idx = keys.length > 1 && !wantLight ? 1 : 0;
+      val = v.valuesByMode[keys[idx]];
+    }
+  }
+  return val;
+}
+
+/**
  * Resolves a semantic Variable's actual bound colour for the light or dark
  * side, following exactly one alias hop (semantic -> primitive is always a
  * single hop in this system; a value that's itself still an alias after
- * that isn't chased further, to keep this bounded and simple).
- *
- * The alias target (a primitive variable) lives in its OWN collection with
- * its OWN mode ids — never the same ids as the semantic collection's. Confirmed
- * live: "Border/border-success"'s swatch showed one flat colour instead of
- * a light/dark split, because looking up the primitive's valuesByMode with
- * the SEMANTIC collection's mode id predictably found nothing, and the old
- * fallback grabbed the primitive's "first available" mode regardless of
- * whether light or dark was being resolved — so both calls landed on the
- * exact same value. Now the primitive's OWN collection is checked for a
- * same-named Light/Dark mode too, so light and dark resolve independently.
+ * that isn't chased further, to keep this bounded and simple). Confirmed
+ * live: "Border/border-success"'s swatch showed one flat colour instead
+ * of a light/dark split — see resolveModeValue() for why, and how the
+ * positional fallback fixes it regardless of the exact API quirk involved.
  */
 async function resolveVariableHex(v, wantLight) {
-  if (!v || !v.valuesByMode) return null;
-  const modes = await lightDarkModeIds(v.variableCollectionId);
-  const modeId = wantLight ? modes.light : modes.dark;
-  if (modeId == null) return null;
-  const val = v.valuesByMode[modeId];
+  const val = await resolveModeValue(v, wantLight);
   if (val === undefined) return null;
   if (val && val.type === "VARIABLE_ALIAS") {
     try {
       const alias = await figma.variables.getVariableByIdAsync(val.id);
-      if (!alias || !alias.valuesByMode) return null;
-      const aliasModes = await lightDarkModeIds(alias.variableCollectionId);
-      const aliasModeId = wantLight ? aliasModes.light : aliasModes.dark;
-      let aliasVal = aliasModeId != null ? alias.valuesByMode[aliasModeId] : undefined;
-      if (aliasVal === undefined) {
-        const keys = Object.keys(alias.valuesByMode);
-        aliasVal = keys.length ? alias.valuesByMode[keys[0]] : undefined;
-      }
+      if (!alias) return null;
+      const aliasVal = await resolveModeValue(alias, wantLight);
       if (!aliasVal || aliasVal.type === "VARIABLE_ALIAS" || typeof aliasVal.r !== "number") return null;
       return hex(aliasVal);
     } catch (e) {

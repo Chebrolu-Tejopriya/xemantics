@@ -363,6 +363,18 @@ const STRONG_BG_DARK_THRESHOLD = 50;
 const STRONG_BG_MAX_DEPTH = 10;
 
 /**
+ * An ancestor's fill below this opacity doesn't count as "the nearest real
+ * background" for onStrongBackground()'s walk — confirmed live: a
+ * default-off hover-state highlight (bound to a real colour, "pure white",
+ * but effectively invisible in the actual screenshot) sat directly between
+ * an icon and the real dark page background, and stopped the walk before
+ * it ever reached the background that actually mattered. Well below
+ * TINT_OPACITY_MAX (0.3) — a legitimate pale tint is meant to be visible
+ * and stays well clear of this cutoff.
+ */
+const MIN_MEANINGFUL_FILL_OPACITY = 0.05;
+
+/**
  * The inverse case: text ALREADY bound to Content/content-on-solid, but NOT
  * actually sitting on a strong/solid background (per STRONG_BG_SEMANTICS /
  * STRONG_BG_PRIMITIVES above), is almost certainly wrong and needs
