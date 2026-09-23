@@ -273,15 +273,9 @@ function hasOwnVisibleFill(node) {
 }
 
 /**
- * Whether a node WITH a confirmed visible fill counts as "strong" — either
- * one of the specific bright brand/status colours (STRONG_BG_PRIMITIVES /
- * STRONG_BG_SEMANTICS — badges, pills, solid buttons), or, more generally,
- * any colour dark enough on its own that pure black content on top of it
- * would be unreadable (a dark-theme page/card background, say). The
- * second check is by actual rendered brightness, not name, since the SAME
- * semantic name (e.g. Surface/surface-primary) means a pale colour in
- * light mode and a near-black one in dark mode — a name-only list can't
- * tell those apart, only the real colour can.
+ * Only explicit saturated brand/status fills count as strong backgrounds.
+ * Ordinary dark surfaces keep theme-reactive content-primary: their rendered
+ * brightness reflects the source mode and may differ from the viewing mode.
  */
 function ownFillIsStrongBg(node, resolved, HEX_INDEX) {
   const solid = firstSolid(node.fills);
@@ -295,11 +289,17 @@ function ownFillIsStrongBg(node, resolved, HEX_INDEX) {
     const prim = HEX_INDEX[renderedHex];
     if (prim && STRONG_BG_PRIMITIVES[prim]) return true;
   }
-  return isVeryDark(renderedHex);
+  // A dark fill can be the active dark-mode value of a theme-reactive
+  // surface. Forcing absolute-white from that snapshot breaks the same
+  // screen when its semantic variables are viewed in light mode. Dark
+  // surfaces already pair correctly with content-primary in dark mode;
+  // only explicit saturated brand/status backgrounds need an absolute
+  // contrast token here.
+  return false;
 }
 
 /**
- * True if `node` (text or an icon glyph) sits on a strong/dark background
+ * True if `node` (text or an icon glyph) sits on an explicit strong background
  * — walks up to the NEAREST ancestor that actually has a visible fill of
  * its own (skipping plain fill-less wrapper frames, which are extremely
  * common for an icon+label row like this) and judges by that one alone,

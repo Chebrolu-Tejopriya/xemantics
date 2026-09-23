@@ -343,15 +343,10 @@ const STRONG_BG_SEMANTICS = {
 const TEXT_ON_STRONG_BG_SEMANTIC = "Content/content-absolute-white";
 
 /**
- * Below this perceptual brightness (0-255), a background counts as
- * "strong" even if it isn't one of the specific brand/status colours
- * above — a dark-theme page/card background, for instance. Every
- * confirmed live dark-mode surface (Surface/surface-primary #0A0A12,
- * surface-raised #171A26, surface-secondary #212538) scores under 40;
- * every existing STRONG_BG_PRIMITIVES colour scores 77+ (Green/09(Base),
- * the dimmest of them, scores ~129) — 50 sits comfortably in the gap
- * between the two, so this can't misfire on the colours already handled
- * by name above.
+ * Diagnostic cutoff used to identify very dark fills in traces. It does
+ * not force white text. That decision is limited to explicit saturated
+ * brand/status backgrounds, allowing content-primary to follow the active
+ * theme when source and viewing modes differ.
  */
 const STRONG_BG_DARK_THRESHOLD = 50;
 
