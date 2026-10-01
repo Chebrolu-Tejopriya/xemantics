@@ -1,6 +1,6 @@
 # Xemantics
 
-Figma plugin for KoinX. Select frames, click **Apply** — primitive colours
+Figma plugin. Select frames, click **Apply** — primitive colours
 become semantic tokens. No training, no preview, no setup.
 
 ---
